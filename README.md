@@ -1,4 +1,4 @@
-#  An Interaction Assistant for 3D Gaussian Splatting in Unity
+#  Interactive Tools for 3D Gaussian Splatting in Unity
 
 - 3dgs 뷰어  
   https://github.com/aras-p/UnityGaussianSplatting  
