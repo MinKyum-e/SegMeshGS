@@ -679,6 +679,40 @@ namespace GaussianSplatting.Runtime
 #endif
         }
 
+        public void CreateAllCameras()
+        {
+            if (!m_Asset || m_Asset.cameras == null || m_Asset.cameras.Length == 0)
+                return;
+
+            const string containerName = "Asset Cameras";
+            var container = transform.Find(containerName);
+            if (container != null)
+            {
+#if UNITY_EDITOR
+                DestroyImmediate(container.gameObject);
+#else
+                Destroy(container.gameObject);
+#endif
+            }
+
+            var containerGO = new GameObject(containerName);
+            container = containerGO.transform;
+            container.SetParent(transform, false);
+
+            var cameras = m_Asset.cameras;
+            for (int i = 0; i < cameras.Length; ++i)
+            {
+                var camInfo = cameras[i];
+                var camGO = new GameObject($"Asset Camera {i}");
+                camGO.transform.SetParent(container, false);
+                camGO.transform.localPosition = camInfo.pos;
+                camGO.transform.localRotation = Quaternion.LookRotation(camInfo.axisZ, camInfo.axisY);
+                var cam = camGO.AddComponent<Camera>();
+                cam.fieldOfView = camInfo.fov;
+                cam.enabled = false;
+            }
+        }
+
         void ClearGraphicsBuffer(GraphicsBuffer buf)
         {
             m_CSSplatUtilities.SetBuffer((int)KernelIndices.ClearBuffer, Props.DstBuffer, buf);

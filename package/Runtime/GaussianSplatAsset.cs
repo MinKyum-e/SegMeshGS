@@ -10,7 +10,7 @@ namespace GaussianSplatting.Runtime
 {
     public class GaussianSplatAsset : ScriptableObject
     {
-        public const int kCurrentVersion = 2023_10_20;
+        public const int kCurrentVersion = 2025_08_10;
         public const int kChunkSize = 256;
         public const int kTextureWidth = 2048; // allows up to 32M splats on desktop GPU (2k width x 16k height)
         public const int kMaxSplats = 8_600_000; // mostly due to 2GB GPU buffer size limit when exporting a splat (2GB / 248B is just over 8.6M)
@@ -227,7 +227,7 @@ namespace GaussianSplatting.Runtime
         public TextAsset shData => m_SHData;
         public TextAsset chunkData => m_ChunkData;
         public CameraInfo[] cameras => m_Cameras;
-
+        
         public struct ChunkInfo
         {
             public uint colR, colG, colB, colA;
@@ -242,6 +242,7 @@ namespace GaussianSplatting.Runtime
             public Vector3 pos;
             public Vector3 axisX, axisY, axisZ;
             public float fov;
+            public string imageName;
         }
     }
 }

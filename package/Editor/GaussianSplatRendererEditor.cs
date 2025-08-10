@@ -4,13 +4,17 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Threading.Tasks;
 using GaussianSplatting.Runtime;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using UnityEditor;
 using UnityEditor.EditorTools;
+using UnityEditor.PackageManager;
 using UnityEngine;
+using UnityEngine.Networking;
 using GaussianSplatRenderer = GaussianSplatting.Runtime.GaussianSplatRenderer;
+using PackageInfo = UnityEditor.PackageManager.PackageInfo;
 
 namespace GaussianSplatting.Editor
 {
@@ -163,6 +167,23 @@ namespace GaussianSplatting.Editor
                     m_CameraIndex = camIndex;
                     gs.ActivateCamera(camIndex);
                 }
+
+                if (GUILayout.Button("Show All Cameras"))
+                {
+                    gs.CreateAllCameras();
+                }
+                if (GUILayout.Button("Show Original Images"))
+                {
+                    ShowOriginalImages(gs);
+                }
+                if (GUILayout.Button("Show Segment Images"))
+                {
+                    ShowSegmentedImages(gs);
+                }
+                if (GUILayout.Button("Segment and Colorize (Server)"))
+                {
+                    SegmentAndColorizeWithSAM(gs);
+                }
             }
         }
 
@@ -232,6 +253,272 @@ namespace GaussianSplatting.Editor
             }
             Debug.Assert(copyDstOffset == totalSplats, $"Merge count mismatch, {copyDstOffset} vs {totalSplats}");
             Selection.activeObject = targetGs;
+        }
+
+        static EditorWindow GetMainGameView()
+        {
+            var gameViewType = Type.GetType("UnityEditor.GameView,UnityEditor");
+            if (gameViewType == null)
+            {
+                Debug.LogError("Failed to find UnityEditor.GameView type. This might be due to a Unity version change.");
+                return null;
+            }
+
+            // Try to find the main game view using the internal static method
+            var getMainGameView = gameViewType.GetMethod("GetMainGameView", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            if (getMainGameView != null)
+            {
+                var res = getMainGameView.Invoke(null, null);
+                if (res is EditorWindow window)
+                    return window;
+            }
+
+            // Fallback: find any open game view window
+            var gameViews = Resources.FindObjectsOfTypeAll(gameViewType);
+            if (gameViews.Length > 0)
+                return (EditorWindow)gameViews[0];
+
+            Debug.LogError("Failed to get main game view. Please ensure the Game View window is open and visible.");
+            return null;
+        }
+        
+        static void ShowOriginalImages(GaussianSplatRenderer gs)
+        {
+            var asset = gs.asset;
+            if (asset == null || asset.cameras == null || asset.cameras.Length == 0)
+            {
+                Debug.LogWarning("No cameras found in the Gaussian Splat asset.");
+                return;
+            }
+
+            string imageFolder = EditorUtility.OpenFolderPanel("Select Folder with Original Images", "", "");
+            if (string.IsNullOrEmpty(imageFolder))
+                return;
+
+            const string containerName = "Original Images";
+            var container = gs.transform.Find(containerName);
+            if (container != null)
+            {
+                DestroyImmediate(container.gameObject);
+            }
+
+            var containerGO = new GameObject(containerName);
+            container = containerGO.transform;
+            container.SetParent(gs.transform, false);
+
+            var cameras = asset.cameras;
+            for (int i = 0; i < cameras.Length; i++)
+            {
+                var camInfo = cameras[i];
+                if (string.IsNullOrEmpty(camInfo.imageName))
+                    continue;
+
+                string imagePath = Path.Combine(imageFolder, camInfo.imageName);
+                if (!File.Exists(imagePath))
+                {
+                    Debug.LogWarning($"Image not found for camera {i}: {imagePath}");
+                    continue;
+                }
+
+                EditorUtility.DisplayProgressBar("Loading Original Images", $"Processing camera {i + 1}/{cameras.Length}", (float)i / cameras.Length);
+
+                var quadGO = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                quadGO.name = camInfo.imageName;
+                quadGO.transform.SetParent(container, false);
+
+                quadGO.transform.localPosition = camInfo.pos;
+                quadGO.transform.localRotation = Quaternion.LookRotation(camInfo.axisZ, camInfo.axisY);
+
+                float distance = 1.0f;
+
+                byte[] fileData = File.ReadAllBytes(imagePath);
+                Texture2D tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                tex.LoadImage(fileData);
+
+                float aspect = (float)tex.width / tex.height;
+                float quadHeight = 2.0f * distance * Mathf.Tan(camInfo.fov * 0.5f * Mathf.Deg2Rad);
+                quadGO.transform.localScale = new Vector3(quadHeight * aspect, quadHeight, 1);
+
+                var quadRenderer = quadGO.GetComponent<Renderer>();
+                var shader = Shader.Find("GaussianSplatting/UnlitDoubleSided");
+                if (shader == null)
+                {
+                    Debug.LogWarning("Shader 'GaussianSplatting/UnlitDoubleSided' not found, falling back to 'Unlit/Texture'. Images may not be visible from behind.");
+                    shader = Shader.Find("Unlit/Texture");
+                }
+                var mat = new Material(shader) { mainTexture = tex };
+                quadRenderer.material = mat;
+
+                DestroyImmediate(quadGO.GetComponent<Collider>());
+            }
+            EditorUtility.ClearProgressBar();
+        }
+
+        static void ShowSegmentedImages(GaussianSplatRenderer gs)
+        {
+            var asset = gs.asset;
+            if (asset == null || asset.cameras == null || asset.cameras.Length == 0)
+            {
+                Debug.LogWarning("No cameras found in the Gaussian Splat asset.");
+                return;
+            }
+
+            string imageFolder = EditorUtility.OpenFolderPanel("Select Folder with Original Images", "", "");
+            if (string.IsNullOrEmpty(imageFolder))
+                return;
+
+            string segmentFolder = Path.Combine(imageFolder, "segment");
+            Directory.CreateDirectory(segmentFolder);
+
+            const string containerName = "Segmented Images";
+            var container = gs.transform.Find(containerName);
+            if (container != null)
+            {
+                DestroyImmediate(container.gameObject);
+            }
+
+            var containerGO = new GameObject(containerName);
+            container = containerGO.transform;
+            container.SetParent(gs.transform, false);
+
+            int imagesFound = 0;
+
+            var cameras = asset.cameras;
+            for (int i = 0; i < cameras.Length; i++)
+            {
+                var camInfo = cameras[i];
+                if (string.IsNullOrEmpty(camInfo.imageName))
+                    continue;
+
+                string imagePath = Path.Combine(segmentFolder, $"{Path.GetFileNameWithoutExtension(camInfo.imageName)}_seg.png");
+                if (!File.Exists(imagePath))
+                    continue;
+
+                imagesFound++;
+                EditorUtility.DisplayProgressBar("Loading Segmented Images", $"Processing camera {i + 1}/{cameras.Length}", (float)i / cameras.Length);
+
+                var quadGO = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                quadGO.name = Path.GetFileName(imagePath);
+                quadGO.transform.SetParent(container, false);
+
+                quadGO.transform.localPosition = camInfo.pos;
+                quadGO.transform.localRotation = Quaternion.LookRotation(camInfo.axisZ, camInfo.axisY);
+
+                byte[] fileData = File.ReadAllBytes(imagePath);
+                Texture2D tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                tex.LoadImage(fileData);
+
+                float aspect = (float)tex.width / tex.height;
+                float quadHeight = 2.0f * 1.0f * Mathf.Tan(camInfo.fov * 0.5f * Mathf.Deg2Rad);
+                quadGO.transform.localScale = new Vector3(quadHeight * aspect, quadHeight, 1);
+
+                var quadRenderer = quadGO.GetComponent<Renderer>();
+                var shader = Shader.Find("GaussianSplatting/UnlitDoubleSided") ?? Shader.Find("Unlit/Texture");
+                var mat = new Material(shader) { mainTexture = tex };
+                quadRenderer.material = mat;
+
+                DestroyImmediate(quadGO.GetComponent<Collider>());
+            }
+            EditorUtility.ClearProgressBar();
+
+            if (imagesFound == 0)
+            {
+                EditorUtility.DisplayDialog("No Segmented Images Found", $"Could not find any segmented images in the '{segmentFolder}' folder.\n\nPlease run 'Segment and Colorize' first to generate them.", "OK");
+                DestroyImmediate(containerGO);
+            }
+        }
+
+        [Serializable]
+        private class SamColorResponse
+        {
+            public string image;
+            public string error;
+        }
+
+        static async void SegmentAndColorizeWithSAM(GaussianSplatRenderer gs)
+        {
+            var asset = gs.asset;
+            if (asset == null || asset.cameras == null || asset.cameras.Length == 0)
+            {
+                Debug.LogWarning("No cameras found in the Gaussian Splat asset.");
+                return;
+            }
+
+            string imageFolder = EditorUtility.OpenFolderPanel("Select Folder with Original Images", "", "");
+            if (string.IsNullOrEmpty(imageFolder))
+                return;
+
+            string outputFolder = Path.Combine(imageFolder, "segment");
+            Directory.CreateDirectory(outputFolder);
+
+            var cameras = asset.cameras;
+            AssetDatabase.StartAssetEditing();
+            try
+            {
+                for (int i = 0; i < cameras.Length; i++)
+                {
+                    var camInfo = cameras[i];
+                    if (string.IsNullOrEmpty(camInfo.imageName))
+                        continue;
+
+                    string imagePath = Path.Combine(imageFolder, camInfo.imageName);
+                    if (!File.Exists(imagePath))
+                    {
+                        Debug.LogWarning($"Image not found for camera {i}: {imagePath}");
+                        continue;
+                    }
+
+                    string progressMessage = $"Segmenting & Coloring image {i + 1}/{cameras.Length}: {camInfo.imageName}";
+                    if (EditorUtility.DisplayCancelableProgressBar("Segmenting with SAM", progressMessage, (float)i / cameras.Length))
+                        break;
+
+                    byte[] imageData = File.ReadAllBytes(imagePath);
+                    var form = new List<IMultipartFormSection>
+                    {
+                        new MultipartFormFileSection("image", imageData, Path.GetFileName(imagePath), "image/jpeg")
+                    };
+
+                    string url = "http://127.0.0.1:5000/segment";
+                    using var request = UnityWebRequest.Post(url, form);
+                    var asyncOp = request.SendWebRequest();
+                    while (!asyncOp.isDone)
+                    {
+                        await Task.Yield();
+                    }
+
+                    if (request.result != UnityWebRequest.Result.Success)
+                    {
+                        Debug.LogError($"Error sending request to SAM server: {request.error}. Make sure the server is running.");
+                        if (!EditorUtility.DisplayDialog("Server Error", $"Failed to connect to the SAM server for {camInfo.imageName}. Make sure the server is running. Do you want to continue?", "Continue", "Abort"))
+                            break;
+                        continue;
+                    }
+
+                    string jsonResponse = request.downloadHandler.text;
+                    var response = JsonUtility.FromJson<SamColorResponse>(jsonResponse);
+
+                    if (!string.IsNullOrEmpty(response.error))
+                    {
+                        Debug.LogError($"SAM server returned an error for {camInfo.imageName}: {response.error}");
+                        if (!EditorUtility.DisplayDialog("SAM Error", $"Segmentation failed for {camInfo.imageName}. See console for details. Do you want to continue?", "Continue", "Abort"))
+                            break;
+                    }
+                    else if (!string.IsNullOrEmpty(response.image))
+                    {
+                        string outputImageName = $"{Path.GetFileNameWithoutExtension(camInfo.imageName)}_seg.png";
+                        string outputPath = Path.Combine(outputFolder, outputImageName);
+                        byte[] imageDataResult = Convert.FromBase64String(response.image);
+                        File.WriteAllBytes(outputPath, imageDataResult);
+                    }
+                }
+            }
+            finally
+            {
+                AssetDatabase.StopAssetEditing();
+                EditorUtility.ClearProgressBar();
+                AssetDatabase.Refresh();
+                Debug.Log("SAM segmentation process finished.");
+            }
         }
 
         void EditGUI(GaussianSplatRenderer gs)

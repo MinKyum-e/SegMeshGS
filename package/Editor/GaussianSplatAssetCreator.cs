@@ -1103,13 +1103,21 @@ namespace GaussianSplatting.Editor
                 axisy *= -1;
                 axisz *= -1;
 
+                // Calculate vertical FOV from camera intrinsics
+                float fovY = 0;
+                if (jsonCam.height > 0 && jsonCam.fy > 0)
+                {
+                    fovY = 2.0f * Mathf.Atan(jsonCam.height / (2.0f * jsonCam.fy)) * Mathf.Rad2Deg;
+                }
+
                 var cam = new GaussianSplatAsset.CameraInfo
                 {
                     pos = pos,
                     axisX = axisx,
                     axisY = axisy,
                     axisZ = axisz,
-                    fov = 25 //@TODO
+                    fov = fovY,
+                    imageName = jsonCam.img_name
                 };
                 result[camIndex] = cam;
             }
