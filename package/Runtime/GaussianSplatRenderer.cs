@@ -14,7 +14,7 @@ using UnityEngine.XR;
 
 namespace GaussianSplatting.Runtime
 {
-    class GaussianSplatRenderSystem
+    class GaussianSplatRenderSystem // 렌더러 관리 시스템
     {
         // ReSharper disable MemberCanBePrivate.Global - used by HDRP/URP features that are not always compiled
         internal static readonly ProfilerMarker s_ProfDraw = new(ProfilerCategory.Render, "GaussianSplat.Draw", MarkerFlags.SampleGPU);
@@ -25,13 +25,19 @@ namespace GaussianSplatting.Runtime
         public static GaussianSplatRenderSystem instance => ms_Instance ??= new GaussianSplatRenderSystem();
         static GaussianSplatRenderSystem ms_Instance;
 
-        readonly Dictionary<GaussianSplatRenderer, MaterialPropertyBlock> m_Splats = new();
-        readonly HashSet<Camera> m_CameraCommandBuffersDone = new();
-        readonly List<(GaussianSplatRenderer, MaterialPropertyBlock)> m_ActiveSplats = new();
+        readonly Dictionary<GaussianSplatRenderer, MaterialPropertyBlock> m_Splats = new(); // 씬의 모든 렌더러 등록
+        readonly HashSet<Camera> m_CameraCommandBuffersDone = new(); // 어떤 카메라에 렌더링 설정을 햇는지 기억
+        readonly List<(GaussianSplatRenderer, MaterialPropertyBlock)> m_ActiveSplats = new(); // 매 프레임 각 카메라마다 이번에 그릴 것들만 모아서 정렬
+        //materialpropertyBlock : 같은 세이더에 각자 다른 가우시안 데이터 버퍼와 설정을 가짐. (개별 메모), 그냥 머티리얼 사용하면 여러 렌더러가 머티리얼을 계속 복사함. => 이 오브젝트를 그릴때만 이 속성들을 덮어씌워서 성능에 유리
 
-        CommandBuffer m_CommandBuffer;
+        CommandBuffer m_CommandBuffer; // 유니티에서 사용하는 GPU가 수행해야할 명령어들을 순서대로 담아두는 그릇
+                                       // 1. GetTemporaryRT : 임시 렌더링 공간
+                                       // 2. ClearRenderTarget : 초기화
+                                       // 3. SortAndRenderSplats: 스플랫 정렬, DrawProcedural로 수많은 스플랫들을 임시 텍스처에 그림.
+                                       // 4. SetRenderTarget(BuiltinRenderTextureType.CameraTarget) : 최종 목적지를 카메라 화면으로 바꾸고 다시 DrawProcdeual로 임시 텍스처를 최종 화면에 합성
+                                       // 5.  ReleaseTemporaryRT : 메모리 해제
 
-        public void RegisterSplat(GaussianSplatRenderer r)
+        public void RegisterSplat(GaussianSplatRenderer r) // 렌더러 추가
         {
             if (m_Splats.Count == 0)
             {
@@ -42,7 +48,7 @@ namespace GaussianSplatting.Runtime
             m_Splats.Add(r, new MaterialPropertyBlock());
         }
 
-        public void UnregisterSplat(GaussianSplatRenderer r)
+        public void UnregisterSplat(GaussianSplatRenderer r) // 렌더러 제거
         {
             if (!m_Splats.ContainsKey(r))
                 return;
@@ -70,13 +76,13 @@ namespace GaussianSplatting.Runtime
         }
 
         // ReSharper disable once MemberCanBePrivate.Global - used by HDRP/URP features that are not always compiled
-        public bool GatherSplatsForCamera(Camera cam)
+        public bool GatherSplatsForCamera(Camera cam) //그려져야하는것, 순서 정하기
         {
             if (cam.cameraType == CameraType.Preview)
                 return false;
-            // gather all active & valid splat objects
+            // gather all active & valid splat objects : 이전 프레임에서 사용한 목록 비우기
             m_ActiveSplats.Clear();
-            foreach (var kvp in m_Splats)
+            foreach (var kvp in m_Splats) // 스플렛 돌기(register된)
             {
                 var gs = kvp.Key;
                 if (gs == null || !gs.isActiveAndEnabled || !gs.HasValidAsset || !gs.HasValidRenderSetup)
@@ -93,12 +99,14 @@ namespace GaussianSplatting.Runtime
                 var orderA = a.Item1.m_RenderOrder;
                 var orderB = b.Item1.m_RenderOrder;
                 if (orderA != orderB)
-                    return orderB.CompareTo(orderA);
+                    return orderB.CompareTo(orderA); // 1. order가 더 높은게 더 나중에 그려지도록(내림차순)
+                
+                //2 .카메라와의 거리
                 var trA = a.Item1.transform;
                 var trB = b.Item1.transform;
-                var posA = camTr.InverseTransformPoint(trA.position);
+                var posA = camTr.InverseTransformPoint(trA.position); //로컬좌표 변환
                 var posB = camTr.InverseTransformPoint(trB.position);
-                return posA.z.CompareTo(posB.z);
+                return posA.z.CompareTo(posB.z); // 오름차순
             });
 
             return true;
@@ -111,19 +119,19 @@ namespace GaussianSplatting.Runtime
             foreach (var kvp in m_ActiveSplats)
             {
                 var gs = kvp.Item1;
-                gs.EnsureMaterials();
-                matComposite = gs.m_MatComposite;
-                var mpb = kvp.Item2;
+                gs.EnsureMaterials(); 
+                matComposite = gs.m_MatComposite; //합성 머티리얼?
+                var mpb = kvp.Item2; //개별속성
 
-                // sort
+                //1. 
                 var matrix = gs.transform.localToWorldMatrix;
-                if (gs.m_FrameCounter % gs.m_SortNthFrame == 0)
-                    gs.SortPoints(cmb, cam, matrix);
+                if (gs.m_FrameCounter % gs.m_SortNthFrame == 0) //N프레임마다 정렬
+                    gs.SortPoints(cmb, cam, matrix); //정렬 명령 추가
                 ++gs.m_FrameCounter;
 
-                // cache view
-                kvp.Item2.Clear();
-                Material displayMat = gs.m_RenderMode switch
+                //2. 뷰 데이터 계산 준비(캐시 비우기)
+                kvp.Item2.Clear();//이전프레임 속성 정보 지우기
+                Material displayMat = gs.m_RenderMode switch 
                 {
                     GaussianSplatRenderer.RenderMode.DebugPoints => gs.m_MatDebugPoints,
                     GaussianSplatRenderer.RenderMode.DebugPointIndices => gs.m_MatDebugPoints,
@@ -134,7 +142,9 @@ namespace GaussianSplatting.Runtime
                 if (displayMat == null)
                     continue;
 
-                gs.SetAssetDataOnMaterial(mpb);
+                //셰이더에 속성 전달
+                gs.SetAssetDataOnMaterial(mpb); //gs의 데이터를 mpb에 넣음.
+                //설정값들
                 mpb.SetBuffer(GaussianSplatRenderer.Props.SplatChunks, gs.m_GpuChunks);
 
                 mpb.SetBuffer(GaussianSplatRenderer.Props.SplatViewData, gs.m_GpuView);
@@ -149,20 +159,20 @@ namespace GaussianSplatting.Runtime
                 mpb.SetInteger(GaussianSplatRenderer.Props.DisplayChunks, gs.m_RenderMode == GaussianSplatRenderer.RenderMode.DebugChunkBounds ? 1 : 0);
 
                 cmb.BeginSample(s_ProfCalcView);
-                gs.CalcViewData(cmb, cam);
+                gs.CalcViewData(cmb, cam); //각 스플렛의 최종 Clip Space Position, 스플랫의 2d모양과 방향, SH계산으로 얻어진 최종 색상, 투명도
                 cmb.EndSample(s_ProfCalcView);
 
                 // draw
-                int indexCount = 6;
+                int indexCount = 6; //기본. 6개의 정보들 이용
                 int instanceCount = gs.splatCount;
                 MeshTopology topology = MeshTopology.Triangles;
                 if (gs.m_RenderMode is GaussianSplatRenderer.RenderMode.DebugBoxes or GaussianSplatRenderer.RenderMode.DebugChunkBounds)
-                    indexCount = 36;
+                    indexCount = 36; //상자
                 if (gs.m_RenderMode == GaussianSplatRenderer.RenderMode.DebugChunkBounds)
                     instanceCount = gs.m_GpuChunksValid ? gs.m_GpuChunks.count : 0;
 
                 cmb.BeginSample(s_ProfDraw);
-                cmb.DrawProcedural(gs.m_GpuIndexBuffer, matrix, displayMat, 0, topology, indexCount, instanceCount, mpb);
+                cmb.DrawProcedural(gs.m_GpuIndexBuffer, matrix, displayMat, 0, topology, indexCount, instanceCount, mpb);// 얘가 최종 draw
                 cmb.EndSample(s_ProfDraw);
             }
             return matComposite;
@@ -173,41 +183,42 @@ namespace GaussianSplatting.Runtime
         public CommandBuffer InitialClearCmdBuffer(Camera cam)
         {
             m_CommandBuffer ??= new CommandBuffer {name = "RenderGaussianSplats"};
-            if (GraphicsSettings.currentRenderPipeline == null && cam != null && !m_CameraCommandBuffersDone.Contains(cam))
+            if (GraphicsSettings.currentRenderPipeline == null && cam != null && !m_CameraCommandBuffersDone.Contains(cam))//처음 렌더링 파이프라인에 연결하는경으
             {
-                cam.AddCommandBuffer(CameraEvent.BeforeForwardAlpha, m_CommandBuffer);
+                cam.AddCommandBuffer(CameraEvent.BeforeForwardAlpha, m_CommandBuffer); // 불투명 < render > 투명 
                 m_CameraCommandBuffersDone.Add(cam);
             }
 
             // get render target for all splats
-            m_CommandBuffer.Clear();
+            m_CommandBuffer.Clear(); //이전프레임에 사용한거 지우기
             return m_CommandBuffer;
         }
 
         void OnPreCullCamera(Camera cam)
         {
-            if (!GatherSplatsForCamera(cam))
+            if (!GatherSplatsForCamera(cam)) // 이 카메라에 보여야할 스플랫 모으고 정렬
                 return;
 
-            InitialClearCmdBuffer(cam);
+            InitialClearCmdBuffer(cam); //3dgs 랜더 파이프라인 위치 세팅
 
-            m_CommandBuffer.GetTemporaryRT(GaussianSplatRenderer.Props.GaussianSplatRT, -1, -1, 0, FilterMode.Point, GraphicsFormat.R16G16B16A16_SFloat);
-            m_CommandBuffer.SetRenderTarget(GaussianSplatRenderer.Props.GaussianSplatRT, BuiltinRenderTextureType.CurrentActive);
-            m_CommandBuffer.ClearRenderTarget(RTClearFlags.Color, new Color(0, 0, 0, 0), 0, 0);
+            
+            m_CommandBuffer.GetTemporaryRT(GaussianSplatRenderer.Props.GaussianSplatRT, -1, -1, 0, FilterMode.Point, GraphicsFormat.R16G16B16A16_SFloat); //임시 렌더링 공간
+            m_CommandBuffer.SetRenderTarget(GaussianSplatRenderer.Props.GaussianSplatRT, BuiltinRenderTextureType.CurrentActive); // 그리기 대상 설정
+            m_CommandBuffer.ClearRenderTarget(RTClearFlags.Color, new Color(0, 0, 0, 0), 0, 0);//지우기
 
             // We only need this to determine whether we're rendering into backbuffer or not. However, detection this
             // way only works in BiRP so only do it here.
             m_CommandBuffer.SetGlobalTexture(GaussianSplatRenderer.Props.CameraTargetTexture, BuiltinRenderTextureType.CameraTarget);
 
             // add sorting, view calc and drawing commands for each splat object
-            Material matComposite = SortAndRenderSplats(cam, m_CommandBuffer);
+            Material matComposite = SortAndRenderSplats(cam, m_CommandBuffer); // draw 후 최종 합성에 필요한 머티리얼에 담음
 
             // compose
             m_CommandBuffer.BeginSample(s_ProfCompose);
-            m_CommandBuffer.SetRenderTarget(BuiltinRenderTextureType.CameraTarget);
-            m_CommandBuffer.DrawProcedural(Matrix4x4.identity, matComposite, 0, MeshTopology.Triangles, 3, 1);
+            m_CommandBuffer.SetRenderTarget(BuiltinRenderTextureType.CameraTarget); // 카메라 화면으로 설정
+            m_CommandBuffer.DrawProcedural(Matrix4x4.identity, matComposite, 0, MeshTopology.Triangles, 3, 1); // 
             m_CommandBuffer.EndSample(s_ProfCompose);
-            m_CommandBuffer.ReleaseTemporaryRT(GaussianSplatRenderer.Props.GaussianSplatRT);
+            m_CommandBuffer.ReleaseTemporaryRT(GaussianSplatRenderer.Props.GaussianSplatRT); //메모리 해제
         }
     }
 
