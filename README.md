@@ -1,4 +1,4 @@
-#  Interactive Tools for 3D Gaussian Splatting in Unity
+#  UnityGSSeg : Segmentation Tools for 3D Gaussian Splatting in Unity 
 
 - 3dgs viewer
   https://github.com/aras-p/UnityGaussianSplatting  
