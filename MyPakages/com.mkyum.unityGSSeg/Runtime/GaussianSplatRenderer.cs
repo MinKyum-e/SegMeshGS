@@ -251,9 +251,7 @@ namespace GaussianSplatting.Runtime
 
         public RenderMode m_RenderMode = RenderMode.Splats;
         [Range(1.0f,15.0f)] public float m_PointDisplaySize = 3.0f;
-
-        public GaussianCutout[] m_Cutouts;
-
+        
         public Shader m_ShaderSplats;
         public Shader m_ShaderComposite;
         public Shader m_ShaderDebugPoints;
@@ -514,10 +512,6 @@ namespace GaussianSplatting.Runtime
             cmb.SetComputeIntParam(cs, Props.SplatFormat, (int)format);
             cmb.SetComputeIntParam(cs, Props.SplatCount, m_SplatCount);
             cmb.SetComputeIntParam(cs, Props.SplatChunkCount, m_GpuChunksValid ? m_GpuChunks.count : 0);
-
-            UpdateCutoutsBuffer();
-            cmb.SetComputeIntParam(cs, Props.SplatCutoutsCount, m_Cutouts?.Length ?? 0);
-            cmb.SetComputeBufferParam(cs, kernelIndex, Props.SplatCutouts, m_GpuEditCutouts);
         }
 
         internal void SetAssetDataOnMaterial(MaterialPropertyBlock mat)
@@ -783,31 +777,7 @@ namespace GaussianSplatting.Runtime
                 bounds.extents = new Vector3(0.1f,0.1f,0.1f);
             editSelectedBounds = bounds;
         }
-
-        void UpdateCutoutsBuffer()
-        {
-            int bufferSize = m_Cutouts?.Length ?? 0;
-            if (bufferSize == 0)
-                bufferSize = 1;
-            if (m_GpuEditCutouts == null || m_GpuEditCutouts.count != bufferSize)
-            {
-                m_GpuEditCutouts?.Dispose();
-                m_GpuEditCutouts = new GraphicsBuffer(GraphicsBuffer.Target.Structured, bufferSize, UnsafeUtility.SizeOf<GaussianCutout.ShaderData>()) { name = "GaussianCutouts" };
-            }
-
-            NativeArray<GaussianCutout.ShaderData> data = new(bufferSize, Allocator.Temp);
-            if (m_Cutouts != null)
-            {
-                var matrix = transform.localToWorldMatrix;
-                for (var i = 0; i < m_Cutouts.Length; ++i)
-                {
-                    data[i] = GaussianCutout.GetShaderData(m_Cutouts[i], matrix);
-                }
-            }
-
-            m_GpuEditCutouts.SetData(data);
-            data.Dispose();
-        }
+        
 
         bool EnsureEditingBuffers()
         {
