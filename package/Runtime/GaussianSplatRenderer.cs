@@ -282,6 +282,13 @@ namespace GaussianSplatting.Runtime
         GraphicsBuffer m_GpuEditPosMouseDown; // position state at start of operation
         GraphicsBuffer m_GpuEditOtherMouseDown; // rotation/scale state at start of operation
 
+        // tile-based culling buffers
+        GraphicsBuffer m_GpuTileSplatCounts; // number of splats influencing each tile
+        GraphicsBuffer m_GpuTileSplatIndices; // indices of splats for each tile
+        GraphicsBuffer m_GpuTileSplatOffsets; // starting offset in indices buffer for each tile
+        int m_TileCountX, m_TileCountY; // tile grid dimensions
+        const int kTileSize = 16; // tile size in pixels (matches existing 16x16 Morton code tiles)
+
         GpuSorting m_Sorter;
         GpuSorting.Args m_SorterArgs;
 
@@ -339,6 +346,14 @@ namespace GaussianSplatting.Runtime
             public static readonly int SelectionMode = Shader.PropertyToID("_SelectionMode");
             public static readonly int SplatPosMouseDown = Shader.PropertyToID("_SplatPosMouseDown");
             public static readonly int SplatOtherMouseDown = Shader.PropertyToID("_SplatOtherMouseDown");
+            
+            // tile-based culling properties
+            public static readonly int TileSplatCounts = Shader.PropertyToID("_TileSplatCounts");
+            public static readonly int TileSplatIndices = Shader.PropertyToID("_TileSplatIndices");
+            public static readonly int TileSplatOffsets = Shader.PropertyToID("_TileSplatOffsets");
+            public static readonly int TileCountX = Shader.PropertyToID("_TileCountX");
+            public static readonly int TileCountY = Shader.PropertyToID("_TileCountY");
+            public static readonly int TileSize = Shader.PropertyToID("_TileSize");
         }
 
         [field: NonSerialized] public bool editModified { get; private set; }
@@ -367,6 +382,8 @@ namespace GaussianSplatting.Runtime
             ScaleSelection,
             ExportData,
             CopySplats,
+            CalcTileSplatMapping,
+            InitTileData,
         }
 
         public bool HasValidAsset =>
@@ -429,6 +446,7 @@ namespace GaussianSplatting.Runtime
             });
 
             InitSortBuffers(splatCount);
+            InitTileCullingBuffers();
         }
 
         void InitSortBuffers(int count)
@@ -453,6 +471,40 @@ namespace GaussianSplatting.Runtime
             m_SorterArgs.count = (uint)count;
             if (m_Sorter.Valid)
                 m_SorterArgs.resources = GpuSorting.SupportResources.Load((uint)count);
+        }
+
+        void InitTileCullingBuffers()
+        {
+            // dispose existing buffers
+            m_GpuTileSplatCounts?.Dispose();
+            m_GpuTileSplatIndices?.Dispose();
+            m_GpuTileSplatOffsets?.Dispose();
+
+            // calculate tile grid dimensions - use reasonable default screen resolution
+            const int defaultScreenWidth = 1920;
+            const int defaultScreenHeight = 1080;
+            
+            m_TileCountX = (defaultScreenWidth + kTileSize - 1) / kTileSize;
+            m_TileCountY = (defaultScreenHeight + kTileSize - 1) / kTileSize;
+            int totalTiles = m_TileCountX * m_TileCountY;
+
+            // allocate buffers for tile culling
+            m_GpuTileSplatCounts = new GraphicsBuffer(GraphicsBuffer.Target.Structured, totalTiles, 4) { name = "TileSplatCounts" };
+            m_GpuTileSplatOffsets = new GraphicsBuffer(GraphicsBuffer.Target.Structured, totalTiles, 4) { name = "TileSplatOffsets" };
+            
+            // conservative estimate: each splat may influence multiple tiles
+            int maxSplatTileReferences = Math.Max(m_SplatCount * 4, totalTiles * 64); // ensure sufficient space
+            m_GpuTileSplatIndices = new GraphicsBuffer(GraphicsBuffer.Target.Structured, maxSplatTileReferences, 4) { name = "TileSplatIndices" };
+
+            // initialize tile data
+            if (m_CSSplatUtilities != null)
+            {
+                m_CSSplatUtilities.SetBuffer((int)KernelIndices.InitTileData, Props.TileSplatCounts, m_GpuTileSplatCounts);
+                m_CSSplatUtilities.SetInt(Props.TileCountX, m_TileCountX);
+                m_CSSplatUtilities.SetInt(Props.TileCountY, m_TileCountY);
+                m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.InitTileData, out uint gsX, out _, out _);
+                m_CSSplatUtilities.Dispatch((int)KernelIndices.InitTileData, (totalTiles + (int)gsX - 1)/(int)gsX, 1, 1);
+            }
         }
 
         bool resourcesAreSetUp => m_ShaderSplats != null && m_ShaderComposite != null && m_ShaderDebugPoints != null &&
@@ -562,6 +614,11 @@ namespace GaussianSplatting.Runtime
             DisposeBuffer(ref m_GpuEditDeleted);
             DisposeBuffer(ref m_GpuEditCountsBounds);
             DisposeBuffer(ref m_GpuEditCutouts);
+
+            // dispose tile culling buffers
+            DisposeBuffer(ref m_GpuTileSplatCounts);
+            DisposeBuffer(ref m_GpuTileSplatIndices);
+            DisposeBuffer(ref m_GpuTileSplatOffsets);
 
             m_SorterArgs.resources.Dispose();
 
@@ -745,6 +802,115 @@ namespace GaussianSplatting.Runtime
         {
             uint mask = ((v >> 31) - 1) | 0x80000000u;
             return math.asfloat(v ^ mask);
+        }
+
+        /// <summary>
+        /// Update tile-to-splat mapping for efficient culling.
+        /// This should be called when camera parameters change.
+        /// </summary>
+        /// <param name="cam">Camera to update mapping for</param>
+        public void UpdateTileCulling(Camera cam)
+        {
+            if (!HasValidRenderSetup || m_GpuTileSplatCounts == null)
+                return;
+
+            // update tile dimensions based on actual screen size
+            int screenWidth = cam.pixelWidth > 0 ? cam.pixelWidth : 1920;
+            int screenHeight = cam.pixelHeight > 0 ? cam.pixelHeight : 1080;
+            
+            int newTileCountX = (screenWidth + kTileSize - 1) / kTileSize;
+            int newTileCountY = (screenHeight + kTileSize - 1) / kTileSize;
+            
+            // reallocate buffers if screen size changed significantly
+            if (newTileCountX != m_TileCountX || newTileCountY != m_TileCountY)
+            {
+                m_TileCountX = newTileCountX;
+                m_TileCountY = newTileCountY;
+                InitTileCullingBuffers();
+            }
+
+            // compute splat-to-tile mapping
+            using CommandBuffer cmb = new CommandBuffer { name = "UpdateTileCulling" };
+            
+            // set shader parameters
+            Matrix4x4 matView = cam.worldToCameraMatrix;
+            Matrix4x4 matO2W = transform.localToWorldMatrix;
+            Matrix4x4 matW2O = transform.worldToLocalMatrix;
+            Vector4 screenPar = new Vector4(screenWidth, screenHeight, 0, 0);
+
+            SetAssetDataOnCS(cmb, KernelIndices.CalcTileSplatMapping);
+            cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixMV, matView * matO2W);
+            cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixObjectToWorld, matO2W);
+            cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixWorldToObject, matW2O);
+            cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.VecScreenParams, screenPar);
+            cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.VecWorldSpaceCameraPos, cam.transform.position);
+            
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.CalcTileSplatMapping, Props.TileSplatCounts, m_GpuTileSplatCounts);
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.CalcTileSplatMapping, Props.TileSplatIndices, m_GpuTileSplatIndices);
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.CalcTileSplatMapping, Props.TileSplatOffsets, m_GpuTileSplatOffsets);
+            cmb.SetComputeIntParam(m_CSSplatUtilities, Props.TileCountX, m_TileCountX);
+            cmb.SetComputeIntParam(m_CSSplatUtilities, Props.TileCountY, m_TileCountY);
+            cmb.SetComputeIntParam(m_CSSplatUtilities, Props.TileSize, kTileSize);
+            
+            m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.CalcTileSplatMapping, out uint gsX, out _, out _);
+            cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.CalcTileSplatMapping, (m_SplatCount + (int)gsX - 1)/(int)gsX, 1, 1);
+            
+            Graphics.ExecuteCommandBuffer(cmb);
+        }
+
+        /// <summary>
+        /// Get splat indices that may influence a specific screen cell.
+        /// Returns a list of splat indices for efficient per-pixel processing.
+        /// Note: This method performs GPU-CPU readback and should be used sparingly.
+        /// For better performance, consider using UpdateTileCulling once per frame
+        /// and accessing tile data directly on GPU.
+        /// </summary>
+        /// <param name="screenX">Screen X coordinate</param>
+        /// <param name="screenY">Screen Y coordinate</param>
+        /// <param name="results">Output list to store splat indices</param>
+        /// <returns>Number of splats that may influence the cell</returns>
+        public int GetSplatsInfluencingCell(int screenX, int screenY, List<int> results)
+        {
+            results.Clear();
+            
+            if (!HasValidRenderSetup || m_GpuTileSplatCounts == null)
+                return 0;
+
+            // calculate tile coordinates
+            int tileX = screenX / kTileSize;
+            int tileY = screenY / kTileSize;
+            
+            if (tileX < 0 || tileX >= m_TileCountX || tileY < 0 || tileY >= m_TileCountY)
+                return 0;
+
+            int tileIndex = tileY * m_TileCountX + tileX;
+            
+            // read count for this tile
+            var countsData = new uint[1];
+            m_GpuTileSplatCounts.GetData(countsData, 0, tileIndex, 1);
+            int splatCount = (int)countsData[0];
+            
+            if (splatCount > 0)
+            {
+                // read splat indices for this tile (simplified data structure)
+                int maxSplatsPerTile = 64; // matches compute shader assumption
+                int startOffset = tileIndex * maxSplatsPerTile;
+                int actualCount = Math.Min(splatCount, maxSplatsPerTile);
+                
+                var splatIndices = new uint[actualCount];
+                if (startOffset + actualCount <= m_GpuTileSplatIndices.count)
+                {
+                    m_GpuTileSplatIndices.GetData(splatIndices, 0, startOffset, actualCount);
+                    
+                    for (int i = 0; i < actualCount; i++)
+                    {
+                        results.Add((int)splatIndices[i]);
+                    }
+                    return actualCount;
+                }
+            }
+            
+            return 0;
         }
 
         public void UpdateEditCountsAndBounds()
