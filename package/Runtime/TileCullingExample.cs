@@ -44,7 +44,7 @@ namespace GaussianSplatting.Runtime
         /// <returns>Index of most influential splat, or -1 if none found</returns>
         public int FindMostInfluentialSplatForPixel(int screenX, int screenY)
         {
-            if (m_SplatRenderer == null)
+            if (m_SplatRenderer == null || !m_SplatRenderer.HasValidTileCulling)
                 return -1;
                 
             // Get all splats that may influence this pixel's cell
@@ -70,7 +70,7 @@ namespace GaussianSplatting.Runtime
         /// <returns>Array of splat indices, one per pixel in the region</returns>
         public int[] SegmentScreenRegion(Rect regionRect)
         {
-            if (m_SplatRenderer == null)
+            if (m_SplatRenderer == null || !m_SplatRenderer.HasValidTileCulling)
                 return new int[0];
                 
             int width = Mathf.RoundToInt(regionRect.width);

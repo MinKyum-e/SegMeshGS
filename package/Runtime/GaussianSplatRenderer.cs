@@ -395,6 +395,11 @@ namespace GaussianSplatting.Runtime
             m_Asset.shData != null &&
             m_Asset.colorData != null;
         public bool HasValidRenderSetup => m_GpuPosData != null && m_GpuOtherData != null && m_GpuChunks != null;
+        
+        /// <summary>
+        /// Check if tile-based culling system is properly initialized and ready to use.
+        /// </summary>
+        public bool HasValidTileCulling => HasValidRenderSetup && m_GpuTileSplatCounts != null && m_GpuTileSplatIndices != null;
 
         const int kGpuViewDataSize = 40;
 
@@ -811,7 +816,7 @@ namespace GaussianSplatting.Runtime
         /// <param name="cam">Camera to update mapping for</param>
         public void UpdateTileCulling(Camera cam)
         {
-            if (!HasValidRenderSetup || m_GpuTileSplatCounts == null)
+            if (!HasValidRenderSetup || m_GpuTileSplatCounts == null || cam == null)
                 return;
 
             // update tile dimensions based on actual screen size
@@ -828,6 +833,10 @@ namespace GaussianSplatting.Runtime
                 m_TileCountY = newTileCountY;
                 InitTileCullingBuffers();
             }
+
+            // skip if no compute shader or no splats
+            if (m_CSSplatUtilities == null || m_SplatCount == 0)
+                return;
 
             // compute splat-to-tile mapping
             using CommandBuffer cmb = new CommandBuffer { name = "UpdateTileCulling" };
@@ -873,7 +882,7 @@ namespace GaussianSplatting.Runtime
         {
             results.Clear();
             
-            if (!HasValidRenderSetup || m_GpuTileSplatCounts == null)
+            if (!HasValidTileCulling)
                 return 0;
 
             // calculate tile coordinates
