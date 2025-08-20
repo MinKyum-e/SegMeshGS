@@ -22,7 +22,7 @@ namespace GaussianSplatting.Editor
     [CanEditMultipleObjects]
     public class GaussianSplatRendererEditor : UnityEditor.Editor
     {
-        const string kPrefExportBake = "nesnausk.GaussianSplatting.ExportBakeTransform";
+        const string kPrefExportBake = "GaussianSplatting.ExportBakeTransform";
 
         SerializedProperty m_PropAsset;
         SerializedProperty m_PropRenderOrder;
@@ -526,7 +526,9 @@ namespace GaussianSplatting.Editor
             ++s_EditStatsUpdateCounter;
 
             DrawSeparator();
+            bool wasToolActive = ToolManager.activeContextType == typeof(GaussianToolContext);
             GUILayout.BeginHorizontal();
+            bool isToolActive = GUILayout.Toggle(wasToolActive, "Edit", EditorStyles.miniButton);
             using (new EditorGUI.DisabledScope(!gs.editModified))
             {
                 if (GUILayout.Button("Reset", GUILayout.ExpandWidth(false)))
@@ -542,14 +544,55 @@ namespace GaussianSplatting.Editor
             }
 
             GUILayout.EndHorizontal();
-            
+            if (!wasToolActive && isToolActive)
+            {
+                ToolManager.SetActiveContext<GaussianToolContext>();
+                if (Tools.current == Tool.View)
+                    Tools.current = Tool.Move;
+            }
+
+            if (wasToolActive && !isToolActive)
+            {
+                ToolManager.SetActiveContext<GameObjectToolContext>();
+            }
+
+            if (isToolActive && gs.asset.chunkData != null)
+            {
+                EditorGUILayout.HelpBox("Splat move/rotate/scale tools need Very High splat quality preset", MessageType.Warning);
+            }
 
             EditorGUILayout.Space();
             GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Add Cutout"))
+            {
+                GaussianCutout cutout = ObjectFactory.CreateGameObject("GSCutout", typeof(GaussianCutout)).GetComponent<GaussianCutout>();
+                Transform cutoutTr = cutout.transform;
+                cutoutTr.SetParent(gs.transform, false);
+                cutoutTr.localScale = (gs.asset.boundsMax - gs.asset.boundsMin) * 0.25f;
+                gs.m_Cutouts ??= Array.Empty<GaussianCutout>();
+                ArrayUtility.Add(ref gs.m_Cutouts, cutout);
+                gs.UpdateEditCountsAndBounds();
+                EditorUtility.SetDirty(gs);
+                Selection.activeGameObject = cutout.gameObject;
+            }
+            if (GUILayout.Button("Use All Cutouts"))
+            {
+                gs.m_Cutouts = FindObjectsByType<GaussianCutout>(FindObjectsSortMode.InstanceID);
+                gs.UpdateEditCountsAndBounds();
+                EditorUtility.SetDirty(gs);
+            }
 
+            if (GUILayout.Button("No Cutouts"))
+            {
+                gs.m_Cutouts = Array.Empty<GaussianCutout>();
+                gs.UpdateEditCountsAndBounds();
+                EditorUtility.SetDirty(gs);
+            }
             GUILayout.EndHorizontal();
             EditorGUILayout.PropertyField(m_PropCutouts);
 
+            bool hasCutouts = gs.m_Cutouts != null && gs.m_Cutouts.Length != 0;
+            bool modifiedOrHasCutouts = gs.editModified || hasCutouts;
 
             var asset = gs.asset;
             EditorGUILayout.Space();
@@ -572,8 +615,23 @@ namespace GaussianSplatting.Editor
                     MessageType.Warning);
             }
 
+            bool displayEditStats = isToolActive || modifiedOrHasCutouts;
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Splats", $"{gs.splatCount:N0}");
+            if (displayEditStats)
+            {
+                EditorGUILayout.LabelField("Cut", $"{gs.editCutSplats:N0}");
+                EditorGUILayout.LabelField("Deleted", $"{gs.editDeletedSplats:N0}");
+                EditorGUILayout.LabelField("Selected", $"{gs.editSelectedSplats:N0}");
+                if (hasCutouts)
+                {
+                    if (s_EditStatsUpdateCounter > 10)
+                    {
+                        gs.UpdateEditCountsAndBounds();
+                        s_EditStatsUpdateCounter = 0;
+                    }
+                }
+            }
         }
 
         static void DrawSeparator()
