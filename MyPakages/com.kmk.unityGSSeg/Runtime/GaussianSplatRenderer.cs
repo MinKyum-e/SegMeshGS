@@ -7,6 +7,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using Unity.Profiling;
 using Unity.Profiling.LowLevel;
+using UnityEditor.Graphs;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
@@ -294,6 +295,18 @@ namespace GaussianSplatting.Runtime
         GaussianSplatAsset m_PrevAsset;
         Hash128 m_PrevHash;
         bool m_Registered;
+        
+        //FindInfluencedCells
+        private Texture m_TileHeadPointers;
+        private GraphicsBuffer m_FragmentListBuffer;
+        private GraphicsBuffer m_FragmentListCounter;
+        GraphicsBuffer m_FragmentListCounterReadback;
+        
+        [SerializeField] public Camera segCamera;
+        [SerializeField] public int tileSize;
+        [SerializeField] public int maxFragmentNodes;
+        
+        
 
         static readonly ProfilerMarker s_ProfSort = new(ProfilerCategory.Render, "GaussianSplat.Sort", MarkerFlags.SampleGPU);
 
@@ -339,6 +352,11 @@ namespace GaussianSplatting.Runtime
             public static readonly int SelectionMode = Shader.PropertyToID("_SelectionMode");
             public static readonly int SplatPosMouseDown = Shader.PropertyToID("_SplatPosMouseDown");
             public static readonly int SplatOtherMouseDown = Shader.PropertyToID("_SplatOtherMouseDown");
+            public static readonly int TileHeadPointers = Shader.PropertyToID("_TileHeadPointers");
+            public static readonly int FragmentListBuffer = Shader.PropertyToID("_FragmentListBuffer");
+            public static readonly int FragmentListCounter = Shader.PropertyToID("_FragmentListCounter");
+            public static readonly int TileSize = Shader.PropertyToID("_TileSize");
+            public static readonly int MaxFragmentNodes = Shader.PropertyToID("_MaxFragmentNodes");
         }
 
         [field: NonSerialized] public bool editModified { get; private set; }
@@ -349,6 +367,7 @@ namespace GaussianSplatting.Runtime
 
         public GaussianSplatAsset asset => m_Asset;
         public int splatCount => m_SplatCount;
+
 
         enum KernelIndices
         {
@@ -367,7 +386,8 @@ namespace GaussianSplatting.Runtime
             ScaleSelection,
             ExportData,
             CopySplats,
-            FindInfluencedCells
+            FindInfluencedCells,
+            ClearTileHeadPointers,
         }
 
         public bool HasValidAsset =>
@@ -381,6 +401,7 @@ namespace GaussianSplatting.Runtime
         public bool HasValidRenderSetup => m_GpuPosData != null && m_GpuOtherData != null && m_GpuChunks != null;
 
         const int kGpuViewDataSize = 40;
+        private const int kGPUFragmentNodeSize = 8;
 
         void CreateResourcesForAsset()
         {
@@ -428,10 +449,39 @@ namespace GaussianSplatting.Runtime
                 0, 4, 1, 4, 5, 1,
                 2, 3, 6, 3, 7, 6
             });
-
+            
             InitSortBuffers(splatCount);
         }
 
+
+        void InitSegmentBuffers()
+        {
+            if (segCamera == null || tileSize <= 0)
+                return;
+
+            // Dispose previous resources if they exist
+            if (m_TileHeadPointers is RenderTexture rtPrev)
+                rtPrev.Release();
+            DestroyImmediate(m_TileHeadPointers);
+
+            // Create fragment list buffers
+            int fragmentNodeCount = maxFragmentNodes > 0 ? maxFragmentNodes : splatCount * 4; // A reasonable default if not set
+            m_FragmentListBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, fragmentNodeCount, kGPUFragmentNodeSize) { name = "FragmentListBuffer" };
+            m_FragmentListCounter = new GraphicsBuffer(GraphicsBuffer.Target.Counter, 1, 4) { name = "FragmentListCounter" };
+            m_FragmentListCounterReadback = new GraphicsBuffer(GraphicsBuffer.Target.Raw, 1, 4) { name = "FragmentListCounterReadback" };
+
+            // Create tile head pointer texture
+            int tilesX = (segCamera.pixelWidth + tileSize - 1) / tileSize;
+            int tilesY = (segCamera.pixelHeight + tileSize - 1) / tileSize;
+
+            var rt = new RenderTexture(tilesX, tilesY, 0, GraphicsFormat.R32_UInt)
+            {
+                enableRandomWrite = true,
+                name = "TileHeadPointers"
+            };
+            rt.Create();
+            m_TileHeadPointers = rt;
+        }
         void InitSortBuffers(int count)
         {
             m_GpuSortDistances?.Dispose();
@@ -545,6 +595,7 @@ namespace GaussianSplatting.Runtime
         void DisposeResourcesForAsset()
         {
             DestroyImmediate(m_GpuColorData);
+            DestroyImmediate(m_TileHeadPointers);
 
             DisposeBuffer(ref m_GpuPosData);
             DisposeBuffer(ref m_GpuOtherData);
@@ -563,6 +614,9 @@ namespace GaussianSplatting.Runtime
             DisposeBuffer(ref m_GpuEditDeleted);
             DisposeBuffer(ref m_GpuEditCountsBounds);
             DisposeBuffer(ref m_GpuEditCutouts);
+            DisposeBuffer(ref m_FragmentListBuffer);
+            DisposeBuffer(ref m_FragmentListCounter);
+            DisposeBuffer(ref m_FragmentListCounterReadback);
 
             m_SorterArgs.resources.Dispose();
 
@@ -574,6 +628,8 @@ namespace GaussianSplatting.Runtime
             editCutSplats = 0;
             editModified = false;
             editSelectedBounds = default;
+
+            
         }
 
         public void OnDisable()
@@ -586,6 +642,87 @@ namespace GaussianSplatting.Runtime
             DestroyImmediate(m_MatComposite);
             DestroyImmediate(m_MatDebugPoints);
             DestroyImmediate(m_MatDebugBoxes);
+        }
+
+        public void FindInfluencedCells()
+        {
+             if (segCamera == null || tileSize <= 0)
+             {
+                 Debug.LogWarning("Segmentation camera or tile size not set for FindInfluencedCells.");
+                 return;
+             }
+ 
+             InitSegmentBuffers();
+ 
+             if (m_FragmentListBuffer == null || m_FragmentListCounter == null || m_TileHeadPointers == null)
+             {
+                 Debug.LogError("Failed to initialize segmentation buffers.");
+                 return;
+             }
+ 
+             Debug.Log("[FindInfluencedCells] Starting...");
+             CommandBuffer cmd = new CommandBuffer() {name = "SegmentGaussianSplats"};
+            
+             // 1. Clear the fragment list counter (reset to 0)
+             Debug.Log("[FindInfluencedCells] Step 1: Queuing command to clear fragment list counter.");
+             int clearCounterKernelId = (int)KernelIndices.ClearBuffer;
+             cmd.SetComputeBufferParam(m_CSSplatUtilities, clearCounterKernelId, Props.DstBuffer, m_FragmentListCounter);
+             cmd.SetComputeIntParam(m_CSSplatUtilities, Props.BufferSize, 1);
+             m_CSSplatUtilities.GetKernelThreadGroupSizes(clearCounterKernelId, out uint gsX_clear, out _, out _);
+             cmd.DispatchCompute(m_CSSplatUtilities, clearCounterKernelId, (1 + (int)gsX_clear - 1)/(int)gsX_clear, 1, 1);
+ 
+             // 2. Clear the tile head pointers texture (initialize to 0xFFFFFFFF)
+             int tilesX = (segCamera.pixelWidth + tileSize - 1) / tileSize;
+             int tilesY = (segCamera.pixelHeight + tileSize - 1) / tileSize;
+             Debug.Log($"[FindInfluencedCells] Step 2: Queuing command to clear tile head pointers texture ({tilesX}x{tilesY}).");
+             int clearTileHeadPointersKernelId = (int)KernelIndices.ClearTileHeadPointers;
+             cmd.SetComputeTextureParam(m_CSSplatUtilities, clearTileHeadPointersKernelId, Props.TileHeadPointers, m_TileHeadPointers);
+             m_CSSplatUtilities.GetKernelThreadGroupSizes(clearTileHeadPointersKernelId, out uint gsX_clearTex, out uint gsY_clearTex, out _);
+             cmd.DispatchCompute(m_CSSplatUtilities, clearTileHeadPointersKernelId, (tilesX + (int)gsX_clearTex - 1)/(int)gsX_clearTex, (tilesY + (int)gsY_clearTex - 1)/(int)gsY_clearTex, 1);
+ 
+             // 3. Update view data (CSCalcViewData) - required by CSFindInfluencedCells
+             Debug.Log("[FindInfluencedCells] Step 3: Queuing command to calculate view data.");
+             CalcViewData(cmd, segCamera);
+ 
+             // 4. Set common splat data buffers for CSFindInfluencedCells
+             Debug.Log("[FindInfluencedCells] Step 4: Setting kernel parameters.");
+             SetAssetDataOnCS(cmd, KernelIndices.FindInfluencedCells);
+ 
+             // 5. Set specific parameters for CSFindInfluencedCells
+             cmd.SetComputeTextureParam(m_CSSplatUtilities, (int)KernelIndices.FindInfluencedCells, Props.TileHeadPointers, m_TileHeadPointers);
+             cmd.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.FindInfluencedCells, Props.FragmentListBuffer, m_FragmentListBuffer);
+             cmd.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.FindInfluencedCells, Props.FragmentListCounter, m_FragmentListCounter);
+             cmd.SetComputeIntParam(m_CSSplatUtilities, Props.TileSize, tileSize);
+             cmd.SetComputeIntParam(m_CSSplatUtilities, Props.MaxFragmentNodes, m_FragmentListBuffer.count);
+ 
+             // 6. Dispatch CSFindInfluencedCells and execute the command buffer
+             Debug.Log($"[FindInfluencedCells] Step 5: Dispatching main kernel for {splatCount} splats and executing command buffer.");
+             DispatchUtilsAndExecute(cmd, KernelIndices.FindInfluencedCells, splatCount); // This function also executes the command buffer
+  
+             // 7. Asynchronously request the counter value from the GPU to avoid stalling the editor
+             Debug.Log("[FindInfluencedCells] Step 6: Requesting counter value from GPU asynchronously.");
+             var listBuffer = m_FragmentListBuffer; // Capture reference for the lambda
+             AsyncGPUReadback.Request(m_FragmentListCounter, 4, 0, request =>
+             {
+                 if (request.hasError)
+                 {
+                     Debug.LogError("[FindInfluencedCells] GPU readback error detected.");
+                     return;
+                 }
+
+                 var data = request.GetData<uint>();
+                 uint allocatedNodes = data[0];
+                 int totalNodes = listBuffer.count;
+                 float usage = totalNodes > 0 ? (float)allocatedNodes / totalNodes * 100 : 0.0f;
+
+                 Debug.Log(
+                     $"[FindInfluencedCells] Execution finished. Allocated {allocatedNodes:N0} / {totalNodes:N0} nodes ({usage:F2}% used).");
+                 if (usage >= 100.0f)
+                 {
+                     Debug.LogWarning(
+                         $"[FindInfluencedCells] Fragment list buffer is full! Consider increasing 'Max Fragment Nodes' to avoid dropping splats.");
+                 }
+             });
         }
 
         internal void CalcViewData(CommandBuffer cmb, Camera cam)

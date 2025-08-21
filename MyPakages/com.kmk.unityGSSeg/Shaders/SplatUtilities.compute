@@ -17,6 +17,8 @@
 #pragma kernel CSScaleSelection
 #pragma kernel CSExportData
 #pragma kernel CSCopySplats
+#pragma kernel CSFindInfluencedCells
+#pragma kernel CSClearTileHeadPointers
 
 // DeviceRadixSort
 #pragma multi_compile __ KEY_UINT KEY_INT KEY_FLOAT
@@ -29,9 +31,6 @@
 #pragma kernel Scan
 #pragma kernel Downsweep
 
-
-//3dgs segmentation
-#pragma kernel CSFindInfluencedCells
 
 // GPU sorting needs wave ops
 #pragma require wavebasic
@@ -767,8 +766,8 @@ struct FragmentNode {
     uint nextNodeIndex;
 };
 
+RWTexture2D<uint> _TileHeadPointers;
 RWStructuredBuffer<FragmentNode> _FragmentListBuffer; //
- 
 RWStructuredBuffer<uint> _FragmentListCounter; //for atomic allocation
 
 uint _TileSize;
@@ -822,4 +821,10 @@ void CSFindInfluencedCells(uint3 id : SV_DispatchThreadID)
             _FragmentListBuffer[nodeIdx].nextNodeIndex = prevHead;
         }
     }
+}
+
+ 
+[numthreads(8,8,1)]
+void CSClearTileHeadPointers (uint3 id : SV_DispatchThreadID) {
+    _TileHeadPointers[id.xy] = 0xFFFFFFFF;
 }

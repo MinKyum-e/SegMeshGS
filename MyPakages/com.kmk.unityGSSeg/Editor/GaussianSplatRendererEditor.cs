@@ -39,6 +39,12 @@ namespace GaussianSplatting.Editor
         SerializedProperty m_PropShaderDebugPoints;
         SerializedProperty m_PropShaderDebugBoxes;
         SerializedProperty m_PropCSSplatUtilities;
+        
+        // For Segmentation
+        SerializedProperty m_PropSegCamera;
+        SerializedProperty m_PropTileSize;
+        SerializedProperty m_PropMaxFragmentNodes;
+        
 
         bool m_ResourcesExpanded = false;
         int m_CameraIndex = 0;
@@ -79,6 +85,11 @@ namespace GaussianSplatting.Editor
             m_PropShaderDebugPoints = serializedObject.FindProperty("m_ShaderDebugPoints");
             m_PropShaderDebugBoxes = serializedObject.FindProperty("m_ShaderDebugBoxes");
             m_PropCSSplatUtilities = serializedObject.FindProperty("m_CSSplatUtilities");
+            
+            // For Segmentation
+            m_PropSegCamera = serializedObject.FindProperty("segCamera");
+            m_PropTileSize = serializedObject.FindProperty("tileSize");
+            m_PropMaxFragmentNodes = serializedObject.FindProperty("maxFragmentNodes");
 
             s_AllEditors.Add(this);
         }
@@ -142,6 +153,7 @@ namespace GaussianSplatting.Editor
             if (validAndEnabled && targets.Length == 1)
             {
                 EditCameras(gs);
+                EditSegmentationGUI(gs);
                 EditGUI(gs);
             }
             if (validAndEnabled && targets.Length > 1)
@@ -185,6 +197,21 @@ namespace GaussianSplatting.Editor
                     SegmentAndColorizeWithSAM(gs);
                 }
             }
+        }
+
+        void EditSegmentationGUI(GaussianSplatRenderer gs)
+        {
+            DrawSeparator();
+            GUILayout.Label("Tiled-Based Culling / Segmentation", EditorStyles.boldLabel);
+            
+            EditorGUILayout.PropertyField(m_PropSegCamera, new GUIContent("Target Camera"));
+            EditorGUILayout.PropertyField(m_PropTileSize);
+            EditorGUILayout.PropertyField(m_PropMaxFragmentNodes);
+
+            if (GUILayout.Button("Execute FindInfluencedCells"))
+            {
+                gs.FindInfluencedCells();
+                }
         }
 
         void MultiEditGUI()
