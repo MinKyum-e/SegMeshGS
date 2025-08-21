@@ -367,6 +367,7 @@ namespace GaussianSplatting.Runtime
             ScaleSelection,
             ExportData,
             CopySplats,
+            FindInfluencedCells
         }
 
         public bool HasValidAsset =>

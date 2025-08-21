@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #define GROUP_SIZE 1024
 
+//3DGS Renderer
 #pragma kernel CSSetIndices
 #pragma kernel CSCalcDistances
 #pragma kernel CSCalcViewData
@@ -27,6 +28,10 @@
 #pragma kernel Upsweep
 #pragma kernel Scan
 #pragma kernel Downsweep
+
+
+//3dgs segmentation
+#pragma kernel CSFindInfluencedCells
 
 // GPU sorting needs wave ops
 #pragma require wavebasic
@@ -754,5 +759,67 @@ void CSCopySplats (uint3 id : SV_DispatchThreadID)
         uint dstWordIdx = dstIdx / 32;
         uint dstBitIdx = dstIdx & 31;
         _CopyDstEditDeleted.InterlockedOr(dstWordIdx * 4, 1u << dstBitIdx);
+    }
+}
+
+struct FragmentNode {
+    uint splatIndex;
+    uint nextNodeIndex;
+};
+
+RWStructuredBuffer<FragmentNode> _FragmentListBuffer; //
+ 
+RWStructuredBuffer<uint> _FragmentListCounter; //for atomic allocation
+
+uint _TileSize;
+uint _MaxFragmentNodes;
+
+// (  1920 * 1080 기준. 픽셀 수 = 2,073,600, 윈도우 셀 크기 (20 * 20 = 400) == 5,184 개의 셀)
+// 보이는 스플렛이 100만개 => 각 셀당 평균 200개의 스플렛이 영향을 준다고 가정
+// 겹치는 곳도 생각하면 *10배
+// => 2000 * 5184 = 10368000
+// 약 41,472,000 바이트의 버퍼 필요 == 약 41.47 MB (충분할듯?)
+//결과 : 각 윈도우에 영향을 주는 스플랫들의 리스트를 return
+
+[numthreads(GROUP_SIZE, 1, 1)]
+void CSFindInfluencedCells(uint3 id : SV_DispatchThreadID)
+{
+    uint splatIdx = id.x;
+    if (splatIdx >= _SplatCount)
+        return;
+
+    SplatViewData view = _SplatViewData[splatIdx];
+    if (view.pos.w <= 0) // 카메라 뒤에 있거나, 삭제/컷아웃되어 보이지 않는 스플랫은 제외
+        return;
+
+    float2 center_ss = (view.pos.xy / view.pos.w * float2(0.5, -0.5) + 0.5) * _VecScreenParams.xy;
+    float2 axis1_ss = view.axis1 * (2.0 / _VecScreenParams.y);
+    float2 axis2_ss = view.axis2 * (2.0 / _VecScreenParams.y);
+    float2 extent = sqrt(axis1_ss * axis1_ss + axis2_ss * axis2_ss);
+    float2 min_ss = center_ss - extent;
+    float2 max_ss = center_ss + extent;
+
+    int2 screenTileDim = ceil(_VecScreenParams.xy / (float) _TileSize);
+
+    int2 minTile = max(0, floor(min_ss / (float) _TileSize));
+    int2 maxTile = min(screenTileDim - 1, floor(max_ss / (float)_TileSize));
+
+    for (int y = minTile.y; y <= maxTile.y; ++y)
+    {
+        for (int x = minTile.x; x <= maxTile.x; ++x)
+        {
+            uint nodeIdx;
+            InterlockedAdd(_FragmentListCounter[0], 1, nodeIdx);
+
+            if (nodeIdx >= _MaxFragmentNodes)
+                return;
+
+            uint prevHead;
+            InterlockedExchange(_TileHeadPointers[uint2(x, y)], nodeIdx, prevHead);
+
+            // 이전 head를 next로 연결
+            _FragmentListBuffer[nodeIdx].splatIndex = splatIdx;
+            _FragmentListBuffer[nodeIdx].nextNodeIndex = prevHead;
+        }
     }
 }
