@@ -179,6 +179,17 @@ namespace GaussianSplatting.Editor
                     m_CameraIndex = camIndex;
                     gs.ActivateCamera(camIndex);
                 }
+                // GaussianSplatRendererEditor.cs 파일에 추가할 코드
+
+// ... 기존의 카메라 목록 및 'Activate' 버튼 아래에 추가 ...
+
+// 카메라 사이클링 시작/정지 버튼
+                string buttonText = gs.IsCyclingCameras ? "Stop Camera Cycling" : "Start Camera Cycling (1s)";
+                if (GUILayout.Button(buttonText))
+                {
+                    gs.ToggleAnalysisCycle();
+                }
+                
 
                 if (GUILayout.Button("Show All Cameras"))
                 {

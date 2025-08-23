@@ -253,6 +253,22 @@ namespace GaussianSplatting.Runtime
         public RenderMode m_RenderMode = RenderMode.Splats;
         [Range(1.0f,15.0f)] public float m_PointDisplaySize = 3.0f;
 
+        #if UNITY_EDITOR
+        // For camera cycling in editor
+        private bool m_IsCyclingCameras;
+        private double m_LastCameraSwitchTime;
+        private int m_CurrentCycleIndex;
+        public bool IsCyclingCameras => m_IsCyclingCameras;
+         
+        // For analysis cycle automation
+        private enum AnalysisCycleState { Idle, SwitchingCamera, Calculating, WaitingForCalculation, Done }
+        private bool m_IsRunningAnalysisCycle;
+        private int m_AnalysisCycleIndex;
+        private AnalysisCycleState m_AnalysisCycleState = AnalysisCycleState.Idle;
+        public bool IsRunningAnalysisCycle => m_IsRunningAnalysisCycle;
+
+        #endif
+
         public GaussianCutout[] m_Cutouts;
 
         public Shader m_ShaderSplats;
@@ -454,10 +470,14 @@ namespace GaussianSplatting.Runtime
         }
 
 
-        void InitSegmentBuffers()
+        bool InitSegmentBuffers(int bufferWidth, int bufferHeight)
         {
-            if (segCamera == null || tileSize <= 0)
-                return;
+            if (bufferWidth <= 0 || bufferHeight <= 0 || tileSize <= 0)
+            {
+                Debug.LogError(
+                    $"Failed to initialize segmentation buffers due to invalid parameters. Width: {bufferWidth}, Height: {bufferHeight}, TileSize: {tileSize}. Ensure the camera is active and tile size is positive.");
+                return false;
+            }
 
             // Dispose previous resources if they exist
             if (m_TileHeadPointers is RenderTexture rtPrev)
@@ -471,8 +491,8 @@ namespace GaussianSplatting.Runtime
             m_FragmentListCounterReadback = new GraphicsBuffer(GraphicsBuffer.Target.Raw, 1, 4) { name = "FragmentListCounterReadback" };
 
             // Create tile head pointer texture
-            int tilesX = (segCamera.pixelWidth + tileSize - 1) / tileSize;
-            int tilesY = (segCamera.pixelHeight + tileSize - 1) / tileSize;
+            int tilesX = (bufferWidth + tileSize - 1) / tileSize;
+            int tilesY = (bufferHeight + tileSize - 1) / tileSize;
 
             var rt = new RenderTexture(tilesX, tilesY, 0, GraphicsFormat.R32_UInt)
             {
@@ -481,6 +501,7 @@ namespace GaussianSplatting.Runtime
             };
             rt.Create();
             m_TileHeadPointers = rt;
+            return true;
         }
         void InitSortBuffers(int count)
         {
@@ -638,27 +659,35 @@ namespace GaussianSplatting.Runtime
             GaussianSplatRenderSystem.instance.UnregisterSplat(this);
             m_Registered = false;
 
+            #if UNITY_EDITOR
+            if (m_IsCyclingCameras)
+            {
+                UnityEditor.EditorApplication.update -= EditorUpdate_CycleCameras;
+                m_IsCyclingCameras = false;
+            }
+            if (m_IsRunningAnalysisCycle)
+            {
+                UnityEditor.EditorApplication.update -= EditorUpdate_AnalysisCycle;
+                m_IsRunningAnalysisCycle = false;
+            }
+            #endif
+
             DestroyImmediate(m_MatSplats);
             DestroyImmediate(m_MatComposite);
             DestroyImmediate(m_MatDebugPoints);
             DestroyImmediate(m_MatDebugBoxes);
         }
 
-        public void FindInfluencedCells()
+        public void FindInfluencedCells(System.Action onComplete = null)
         {
-             if (segCamera == null || tileSize <= 0)
+             if (segCamera == null)
              {
                  Debug.LogWarning("Segmentation camera or tile size not set for FindInfluencedCells.");
                  return;
              }
  
-             InitSegmentBuffers();
- 
-             if (m_FragmentListBuffer == null || m_FragmentListCounter == null || m_TileHeadPointers == null)
-             {
-                 Debug.LogError("Failed to initialize segmentation buffers.");
-                 return;
-             }
+             if (!InitSegmentBuffers(segCamera.pixelWidth, segCamera.pixelHeight))
+                return;
  
              Debug.Log("[FindInfluencedCells] Starting...");
              CommandBuffer cmd = new CommandBuffer() {name = "SegmentGaussianSplats"};
@@ -722,6 +751,7 @@ namespace GaussianSplatting.Runtime
                      Debug.LogWarning(
                          $"[FindInfluencedCells] Fragment list buffer is full! Consider increasing 'Max Fragment Nodes' to avoid dropping splats.");
                  }
+                 onComplete?.Invoke();
              });
         }
 
@@ -827,6 +857,122 @@ namespace GaussianSplatting.Runtime
             UnityEditor.EditorUtility.SetDirty(camTr);
 #endif
         }
+        
+        #if UNITY_EDITOR
+        public void ToggleCameraCycling()
+        {
+            if (!m_IsCyclingCameras)
+            {
+                if (m_Asset == null || m_Asset.cameras == null || m_Asset.cameras.Length == 0)
+                {
+                    Debug.LogWarning("No asset cameras available to cycle.", this);
+                    return;
+                }
+
+                m_IsCyclingCameras = true;
+                m_CurrentCycleIndex = 0;
+                m_LastCameraSwitchTime = UnityEditor.EditorApplication.timeSinceStartup;
+                UnityEditor.EditorApplication.update += EditorUpdate_CycleCameras;
+                ActivateCamera(m_CurrentCycleIndex); // Activate the first camera immediately
+                Debug.Log("Started camera cycling.", this);
+            }
+            else
+            {
+                m_IsCyclingCameras = false;
+                UnityEditor.EditorApplication.update -= EditorUpdate_CycleCameras;
+                Debug.Log("Stopped camera cycling.", this);
+            }
+        }
+
+        void EditorUpdate_CycleCameras()
+        {
+            // Safety checks
+            if (!m_IsCyclingCameras || m_Asset == null || m_Asset.cameras == null || m_Asset.cameras.Length == 0)
+            {
+                m_IsCyclingCameras = false;
+                UnityEditor.EditorApplication.update -= EditorUpdate_CycleCameras;
+                return;
+            }
+
+            if (UnityEditor.EditorApplication.timeSinceStartup >= m_LastCameraSwitchTime + 1.0)
+            {
+                m_LastCameraSwitchTime = UnityEditor.EditorApplication.timeSinceStartup;
+                m_CurrentCycleIndex = (m_CurrentCycleIndex + 1) % m_Asset.cameras.Length;
+                ActivateCamera(m_CurrentCycleIndex);
+                UnityEditor.SceneView.RepaintAll(); // Force scene view to repaint to show the change
+            }
+        }
+
+         public void ToggleAnalysisCycle()
+         {
+             if (!m_IsRunningAnalysisCycle)
+             {
+                 if (m_Asset == null || m_Asset.cameras == null || m_Asset.cameras.Length == 0)
+                 {
+                     Debug.LogWarning("No asset cameras available for analysis cycle.", this);
+                     return;
+                 }
+
+                 if (segCamera != Camera.main)
+                 {
+                     Debug.LogWarning($"For the Analysis Cycle to work correctly, the 'Seg Camera' field must be set to the 'Main Camera'. The cycle will run, but might produce unexpected results.", this);
+                 }
+
+                 m_IsRunningAnalysisCycle = true;
+                 m_AnalysisCycleIndex = 0;
+                 m_AnalysisCycleState = AnalysisCycleState.SwitchingCamera; // Start the process
+                 UnityEditor.EditorApplication.update += EditorUpdate_AnalysisCycle;
+                 Debug.Log("Started analysis cycle.", this);
+             }
+             else
+             {
+                 m_IsRunningAnalysisCycle = false;
+                 m_AnalysisCycleState = AnalysisCycleState.Idle;
+                 UnityEditor.EditorApplication.update -= EditorUpdate_AnalysisCycle;
+                 Debug.Log("Stopped analysis cycle.", this);
+             }
+         }
+ 
+         void EditorUpdate_AnalysisCycle()
+         {
+             if (!m_IsRunningAnalysisCycle)
+             {
+                 m_AnalysisCycleState = AnalysisCycleState.Idle;
+                 UnityEditor.EditorApplication.update -= EditorUpdate_AnalysisCycle;
+                 return;
+             }
+ 
+             switch (m_AnalysisCycleState)
+             {
+                 case AnalysisCycleState.SwitchingCamera:
+                     Debug.Log($"[Analysis Cycle] Activating camera {m_AnalysisCycleIndex}...");
+                     ActivateCamera(m_AnalysisCycleIndex);
+                     m_AnalysisCycleState = AnalysisCycleState.Calculating;
+                     break;
+ 
+                 case AnalysisCycleState.Calculating:
+                     Debug.Log($"[Analysis Cycle] Calculating influenced cells for camera {m_AnalysisCycleIndex}...");
+                     FindInfluencedCells(() => {
+                         // This callback is executed when the async readback is complete.
+                         m_AnalysisCycleIndex++;
+                         if (m_AnalysisCycleIndex >= m_Asset.cameras.Length)
+                             m_AnalysisCycleState = AnalysisCycleState.Done;
+                         else
+                             m_AnalysisCycleState = AnalysisCycleState.SwitchingCamera;
+                     });
+                     m_AnalysisCycleState = AnalysisCycleState.WaitingForCalculation;
+                     break;
+ 
+                 case AnalysisCycleState.WaitingForCalculation:
+                     // Do nothing, wait for the callback to change the state
+                     break;
+ 
+                 case AnalysisCycleState.Done:
+                     Debug.Log("[Analysis Cycle] Finished all cameras.");
+                     ToggleAnalysisCycle(); // This will stop the update loop
+                     break;
+             }
+         }
 
         public void CreateAllCameras()
         {
@@ -1267,3 +1413,5 @@ namespace GaussianSplatting.Runtime
         public GraphicsBuffer GpuEditDeleted => m_GpuEditDeleted;
     }
 }
+
+#endif
