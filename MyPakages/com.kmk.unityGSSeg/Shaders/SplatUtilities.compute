@@ -782,6 +782,7 @@ uint _MaxFragmentNodes;
 // 약 41,472,000 바이트의 버퍼 필요 == 약 41.47 MB (충분할듯?)
 //결과 : 각 윈도우에 영향을 주는 스플랫들의 리스트를 return
 
+
 [numthreads(GROUP_SIZE, 1, 1)]
 void CSFindInfluencedCells(uint3 id : SV_DispatchThreadID)
 {
@@ -793,15 +794,23 @@ void CSFindInfluencedCells(uint3 id : SV_DispatchThreadID)
     if (view.pos.w <= 0) // 카메라 뒤에 있거나, 삭제/컷아웃되어 보이지 않는 스플랫은 제외
         return;
 
+    // 1. 스플랫의 중심점을 화면 공간(픽셀) 좌표로 변환합니다.
     float2 center_ss = (view.pos.xy / view.pos.w * float2(0.5, -0.5) + 0.5) * _VecScreenParams.xy;
-    float2 axis1_ss = view.axis1 * (2.0 / _VecScreenParams.y);
-    float2 axis2_ss = view.axis2 * (2.0 / _VecScreenParams.y);
-    float2 extent = sqrt(axis1_ss * axis1_ss + axis2_ss * axis2_ss);
-    float2 min_ss = center_ss - extent;
-    float2 max_ss = center_ss + extent;
 
+    // 2. 화면 공간에서 타원의 두 축을 계산합니다.
+    // view.axis1과 view.axis2는 클립 공간 델타이므로, 화면 공간으로 변환합니다.
+    // GS 셰이더 로직(v = axis * center.w)을 참고하면, w로 나누는 것이 이미 적용되어 있습니다.
+    // 따라서 화면 공간으로의 변환은 선형적입니다.
+    float2 axis1_px = view.axis1 * float2(0.5, -0.5) * _VecScreenParams.xy;
+    float2 axis2_px = view.axis2 * float2(0.5, -0.5) * _VecScreenParams.xy;
+
+    // 3. 타원을 감싸는 축에 정렬된 경계 상자(AABB)의 반경(extent)을 계산합니다.
+    float2 extent_px = sqrt(axis1_px * axis1_px + axis2_px * axis2_px);
+
+    // 4. 경계 상자의 최소/최대 픽셀 좌표와 이를 포함하는 타일 범위를 계산합니다.
+    float2 min_ss = center_ss - extent_px;
+    float2 max_ss = center_ss + extent_px;
     int2 screenTileDim = ceil(_VecScreenParams.xy / (float) _TileSize);
-
     int2 minTile = max(0, floor(min_ss / (float) _TileSize));
     int2 maxTile = min(screenTileDim - 1, floor(max_ss / (float)_TileSize));
 

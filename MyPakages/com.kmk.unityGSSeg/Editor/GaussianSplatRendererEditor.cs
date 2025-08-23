@@ -23,6 +23,8 @@ namespace GaussianSplatting.Editor
     public class GaussianSplatRendererEditor : UnityEditor.Editor
     {
         const string kPrefExportBake = "GaussianSplatting.ExportBakeTransform";
+        private static int s_TileGridWidth;
+        private static int s_TileGridHeight;
 
         SerializedProperty m_PropAsset;
         SerializedProperty m_PropRenderOrder;
@@ -232,6 +234,7 @@ namespace GaussianSplatting.Editor
 
             using (new EditorGUI.DisabledScope(gs.allocatedFragmentNodes == 0))
             {
+                EditorGUILayout.BeginHorizontal();
                 if (GUILayout.Button("Print Tile Head Pointers to Console"))
                 {
                     gs.RequestTileHeadPointersData((data, width, height) =>
@@ -241,6 +244,12 @@ namespace GaussianSplatting.Editor
                             Debug.Log("Tile Head Pointers data is not available or empty. Run 'Execute FindInfluencedCells' first.");
                             return;
                         }
+                        
+                        // 다른 함수에서 사용할 수 있도록 데이터를 캐싱합니다.
+                        GaussianSplatAsset.m_windowCell = data.ToArray();
+                        s_TileGridWidth = width;
+                        s_TileGridHeight = height;
+                        
                         var sb = new StringBuilder();
                         sb.AppendLine($"--- Tile Head Pointers (Grid Size: {width}x{height}) ---");
                         GaussianSplatAsset.m_windowCell = data.ToArray();
@@ -262,6 +271,70 @@ namespace GaussianSplatting.Editor
                         Debug.Log(sb.ToString());
                     });
                 }
+                 
+                 if (GUILayout.Button("Save Pointers as Image..."))
+                 {
+                     if (GaussianSplatAsset.m_windowCell == null || GaussianSplatAsset.m_windowCell.Length == 0 || s_TileGridWidth == 0 || s_TileGridHeight == 0 || GaussianSplatAsset.nodes == null)
+                     {
+                         EditorUtility.DisplayDialog("Data Not Available", "Please run 'Print Tile Head Pointers' and 'Print Fragment List' first to cache the data.", "OK");
+                     }
+                     else
+                     {
+                         string path = EditorUtility.SaveFilePanel("Save Tile Pointers Image", "", "tile_pointers.png", "png");
+                         if (!string.IsNullOrEmpty(path))
+                         {
+                             try
+                             {
+                                 int width = s_TileGridWidth;
+                                 int height = s_TileGridHeight;
+                                 var texture = new Texture2D(width, height, TextureFormat.RGB24, false);
+                                 var pixels = new Color[width * height];
+ 
+                                 for (int y = 0; y < height; y++)
+                                 {
+                                     for (int x = 0; x < width; x++)
+                                     {
+                                         int dataIndex = y * width + x;
+                                         // Texture2D의 (0,0)은 좌측 하단이므로, Y축을 뒤집어 이미지 방향을 맞춥니다.
+                                         int textureIndex = (height - 1 - y) * width + x;
+                                         uint headNodeIndex = GaussianSplatAsset.m_windowCell[dataIndex];
+
+                                         if (headNodeIndex != 0xFFFFFFFF && headNodeIndex < GaussianSplatAsset.nodes.Length)
+                                         {
+                                             // 셀의 첫 번째 노드를 가져와서 스플랫 인덱스를 찾습니다.
+                                             var node = GaussianSplatAsset.nodes[headNodeIndex];
+                                             uint splatIndex = node.splatIndex;
+                                             // 스플랫 인덱스를 100개 단위로 그룹화하여 색상을 결정합니다.
+                                             uint groupIndex = splatIndex / 100;
+                                             float hue = (groupIndex % 20) / 20.0f; // 20개의 색상 그룹으로 순환
+                                             pixels[textureIndex] = Color.HSVToRGB(hue, 0.95f, 0.95f);
+                                         }
+                                         else
+                                         {
+                                             // 활성화되지 않은 셀은 검은색으로 칠합니다.
+                                             pixels[textureIndex] = Color.black;
+                                         }
+                                     }
+                                 }
+ 
+                                 texture.SetPixels(pixels);
+                                 texture.Apply();
+ 
+                                 byte[] bytes = texture.EncodeToPNG();
+                                 System.IO.File.WriteAllBytes(path, bytes);
+                                 DestroyImmediate(texture);
+ 
+                                 Debug.Log($"Successfully saved tile pointers image to {path}");
+                             }
+                             catch (System.Exception e)
+                             {
+                                 Debug.LogError($"Failed to save tile pointers image: {e.Message}");
+                             }
+                         }
+                     }
+                 }
+                 EditorGUILayout.EndHorizontal();
+
 
                 if (GUILayout.Button("Print Fragment List to Console"))
                 {
@@ -394,7 +467,7 @@ namespace GaussianSplatting.Editor
                             var activeCells = new HashSet<uint>();
                             for (int i = 0; i < splatCount; i++)
                             {
-                                uint cellId = GaussianSplatAsset.m_splatcell[i];
+                                uint cellId = GaussianSplatAsset.m_splatcell[i]; 
                                 if (cellId != 0xFFFFFFFF)
                                 {
                                     activeCells.Add(cellId);

@@ -282,6 +282,10 @@ namespace GaussianSplatting.Runtime
         public Shader m_ShaderDebugBoxes;
         [Tooltip("Gaussian splatting compute shader")]
         public ComputeShader m_CSSplatUtilities;
+        [Tooltip("Dominant splat finding compute shader")]
+        public ComputeShader m_CSDominantSplat;
+
+        
 
         int m_SplatCount; // initially same as asset splat count, but editing can change this
         GraphicsBuffer m_GpuSortDistances;
@@ -296,6 +300,7 @@ namespace GaussianSplatting.Runtime
         internal GraphicsBuffer m_GpuIndexBuffer;
 
         GraphicsBuffer m_GpuSplatTileLink;
+        GraphicsBuffer m_GpuDominantSplatPerTile;
         int2 m_TileGridDim;
 
         // these buffers are only for splat editing, and are lazily created
@@ -384,6 +389,7 @@ namespace GaussianSplatting.Runtime
             public static readonly int MaxFragmentNodes = Shader.PropertyToID("_MaxFragmentNodes");
             public static readonly int SplatTileLink = Shader.PropertyToID("_SplatTileLink");
             public static readonly int TileGridDim = Shader.PropertyToID("_TileGridDim");
+            public static readonly int DominantSplatPerTile = Shader.PropertyToID("_DominantSplatPerTile");
         }
 
         [field: NonSerialized] public bool editModified { get; private set; }
@@ -661,6 +667,7 @@ namespace GaussianSplatting.Runtime
             DisposeBuffer(ref m_FragmentListCounter);
             DisposeBuffer(ref m_FragmentListCounterReadback);
             DisposeBuffer(ref m_GpuSplatTileLink);
+            DisposeBuffer(ref m_GpuDominantSplatPerTile);
 
             m_SorterArgs.resources.Dispose();
 
@@ -676,6 +683,7 @@ namespace GaussianSplatting.Runtime
 
             
         }
+        
 
         public void OnDisable()
         {
