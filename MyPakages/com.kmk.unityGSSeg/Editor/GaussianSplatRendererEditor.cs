@@ -32,6 +32,7 @@ namespace GaussianSplatting.Editor
         SerializedProperty m_PropSHOnly;
         SerializedProperty m_PropSortNthFrame;
         SerializedProperty m_PropRenderMode;
+        SerializedProperty m_PropDisplayInfluenced;
         SerializedProperty m_PropPointDisplaySize;
         SerializedProperty m_PropCutouts;
         SerializedProperty m_PropShaderSplats;
@@ -78,6 +79,7 @@ namespace GaussianSplatting.Editor
             m_PropSHOnly = serializedObject.FindProperty("m_SHOnly");
             m_PropSortNthFrame = serializedObject.FindProperty("m_SortNthFrame");
             m_PropRenderMode = serializedObject.FindProperty("m_RenderMode");
+            m_PropDisplayInfluenced = serializedObject.FindProperty("m_displayInfluenced");
             m_PropPointDisplaySize = serializedObject.FindProperty("m_PointDisplaySize");
             m_PropCutouts = serializedObject.FindProperty("m_Cutouts");
             m_PropShaderSplats = serializedObject.FindProperty("m_ShaderSplats");
@@ -132,6 +134,7 @@ namespace GaussianSplatting.Editor
             EditorGUILayout.PropertyField(m_PropRenderMode);
             if (m_PropRenderMode.intValue is (int)GaussianSplatRenderer.RenderMode.DebugPoints or (int)GaussianSplatRenderer.RenderMode.DebugPointIndices)
                 EditorGUILayout.PropertyField(m_PropPointDisplaySize);
+            EditorGUILayout.PropertyField(m_PropDisplayInfluenced);
 
             EditorGUILayout.Space();
             m_ResourcesExpanded = EditorGUILayout.Foldout(m_ResourcesExpanded, "Resources", true, EditorStyles.foldoutHeader);
@@ -222,7 +225,203 @@ namespace GaussianSplatting.Editor
             if (GUILayout.Button("Execute FindInfluencedCells"))
             {
                 gs.FindInfluencedCells();
+            }
+
+            GUILayout.Space(5);
+            EditorGUILayout.LabelField("Debugging", EditorStyles.boldLabel);
+
+            using (new EditorGUI.DisabledScope(gs.allocatedFragmentNodes == 0))
+            {
+                if (GUILayout.Button("Print Tile Head Pointers to Console"))
+                {
+                    gs.RequestTileHeadPointersData((data, width, height) =>
+                    {
+                        if (data == null || data.Length == 0 || width == 0 || height == 0)
+                        {
+                            Debug.Log("Tile Head Pointers data is not available or empty. Run 'Execute FindInfluencedCells' first.");
+                            return;
+                        }
+                        var sb = new StringBuilder();
+                        sb.AppendLine($"--- Tile Head Pointers (Grid Size: {width}x{height}) ---");
+                        GaussianSplatAsset.m_windowCell = data.ToArray();
+                        int activeTileCount = 0;
+                        for (int y = 0; y < height; y++)
+                        {
+                            for (int x = 0; x < width; x++)
+                            {
+                                int index = y * width + x;
+                                uint headNodeIndex = GaussianSplatAsset.m_windowCell[index];
+                                if (headNodeIndex != 0xFFFFFFFF) // 0xFFFFFFFF is the clear value
+                                {
+                                    sb.AppendLine($"Tile({x,3},{y,3}): Head Node Index = {headNodeIndex}");
+                                    activeTileCount++;
+                                }
+                            }
+                        }
+                        sb.AppendLine($"--- Found {activeTileCount} active tiles. ---");
+                        Debug.Log(sb.ToString());
+                    });
                 }
+
+                if (GUILayout.Button("Print Fragment List to Console"))
+                {
+                    gs.RequestFragmentListBufferData(data =>
+                    {
+                        if (data == null || data.Length == 0)
+                        {
+                            Debug.Log("Fragment List data is not available. Run 'Execute FindInfluencedCells' first.");
+                            return;
+                        }
+
+                        var sb = new StringBuilder();
+                        uint nodesToPrint = Math.Min(gs.allocatedFragmentNodes, (uint)data.Length);
+                        sb.AppendLine($"--- Fragment List (Printing first {Math.Min(nodesToPrint, 1000)} of {gs.allocatedFragmentNodes} allocated nodes) ---");
+                        GaussianSplatAsset.nodes = data.ToArray();
+                        uint limit = Math.Min(nodesToPrint, 1000);
+
+                        for (int i = 0; i < limit; i++)
+                        {
+                            var node = GaussianSplatAsset.nodes[i];
+                            string nextNodeStr = node.nextNodeIndex == 0xFFFFFFFF ? "NULL" : node.nextNodeIndex.ToString();
+                            sb.AppendLine($"Node[{i,4}]: Splat Index = {node.splatIndex,-7} | Next Node = {nextNodeStr}");
+                        }
+
+                        if (nodesToPrint > 1000)
+                        {
+                            sb.AppendLine($"... and {nodesToPrint - 1000} more nodes.");
+                        }
+
+                        sb.AppendLine($"--- End of Fragment List ---");
+                        Debug.Log(sb.ToString());
+                    });
+                }
+
+                if (GUILayout.Button("Process and Store Splat-Cell Links"))
+                {
+                    if (GaussianSplatAsset.m_windowCell == null || GaussianSplatAsset.m_windowCell.Length == 0 ||
+                        GaussianSplatAsset.nodes == null || GaussianSplatAsset.nodes.Length == 0)
+                    {
+                        Debug.LogError("Data not available. Please run the 'Print' buttons first to populate CPU-side data.");
+                        return;
+                    }
+
+                    int splatCount = gs.splatCount;
+                    if (splatCount == 0)
+                    {
+                        Debug.LogError("Splat count is zero. Cannot process links.");
+                        return;
+                    }
+
+                    // 대상 배열을 초기화하고 "유효하지 않음" 마커로 채웁니다.
+                    GaussianSplatAsset.m_splatcell = new uint[splatCount];
+                    for (int i = 0; i < splatCount; ++i)
+                    {
+                        GaussianSplatAsset.m_splatcell[i] = 0xFFFFFFFF;
+                    }
+
+                    int mappedSplatCount = 0;
+                    // 각 타일을 순회합니다. 루프 인덱스가 타일의 ID가 됩니다.
+                    for (int tileIndex = 0; tileIndex < GaussianSplatAsset.m_windowCell.Length; tileIndex++)
+                    {
+                        uint currentNodeIndex = GaussianSplatAsset.m_windowCell[tileIndex];
+
+                        // 이 타일에 대한 연결 리스트를 순회합니다.
+                        while (currentNodeIndex != 0xFFFFFFFF && currentNodeIndex < GaussianSplatAsset.nodes.Length)
+                        {
+                            var node = GaussianSplatAsset.nodes[currentNodeIndex];
+                            uint splatIndex = node.splatIndex;
+
+                            if (splatIndex < splatCount && GaussianSplatAsset.m_splatcell[splatIndex] == 0xFFFFFFFF)
+                            {
+                                GaussianSplatAsset.m_splatcell[splatIndex] = (uint)tileIndex;
+                                mappedSplatCount++;
+                            }
+                            currentNodeIndex = node.nextNodeIndex;
+                        }
+                    }
+                    Debug.Log($"Successfully processed splat-cell links. Mapped {mappedSplatCount} of {splatCount} splats to their first-encountered tile.");
+
+                    // 콘솔에 매핑 결과 출력
+                    var sb = new StringBuilder();
+                    sb.AppendLine($"--- Splat to Cell Mapping (Showing first 1000 mapped splats) ---");
+                    int printCount = 0;
+                    for (int i = 0; i < splatCount && printCount < 1000; i++)
+                    {
+                        uint cellId = GaussianSplatAsset.m_splatcell[i];
+                        if (cellId != 0xFFFFFFFF)
+                        {
+                            sb.AppendLine($"Splat[{i,7}]: Cell ID = {cellId}");
+                            printCount++;
+                        }
+                    }
+                    if (mappedSplatCount > 1000)
+                    {
+                        sb.AppendLine($"... and {mappedSplatCount - 1000} more mapped splats.");
+                    }
+                    sb.AppendLine($"--- End of Mapping ---");
+                    Debug.Log(sb.ToString());
+                    // 파일로 저장
+                    string path = EditorUtility.SaveFilePanel("Save Splat-Cell Mapping", "", "splat_cell_mapping.txt", "txt");
+                    if (!string.IsNullOrEmpty(path))
+                    {
+                        try
+                        {
+                            var fileSb = new StringBuilder();
+                            fileSb.AppendLine($"--- Splat to Cell Mapping (Total: {mappedSplatCount} mapped splats out of {splatCount}) ---");
+                            for (int i = 0; i < splatCount; i++)
+                            {
+                                uint cellId = GaussianSplatAsset.m_splatcell[i];
+                                if (cellId != 0xFFFFFFFF)
+                                {
+                                    fileSb.AppendLine($"Splat[{i,7}]: Cell ID = {cellId}");
+                                }
+                            }
+                            fileSb.AppendLine($"--- End of Mapping ---");
+                            File.WriteAllText(path, fileSb.ToString(), Encoding.UTF8);
+                            Debug.Log($"Successfully saved splat-cell mapping to {path}");
+                        }
+                        catch (Exception e)
+                        {
+                            Debug.LogError($"Failed to save splat-cell mapping to file: {e.Message}");
+                        }
+                    }
+                    // 매핑에 사용된 고유한 (활성화된) 셀 인덱스들을 파일로 저장
+                    string activeCellPath = EditorUtility.SaveFilePanel("Save Active Cell Indices", "", "active_cell_indices.txt", "txt");
+                    if (!string.IsNullOrEmpty(activeCellPath))
+                    {
+                        try
+                        {
+                            var activeCells = new HashSet<uint>();
+                            for (int i = 0; i < splatCount; i++)
+                            {
+                                uint cellId = GaussianSplatAsset.m_splatcell[i];
+                                if (cellId != 0xFFFFFFFF)
+                                {
+                                    activeCells.Add(cellId);
+                                }
+                            }
+
+                            using (var writer = new StreamWriter(activeCellPath, false, Encoding.UTF8))
+                            {
+                                writer.WriteLine($"--- Active Cell Indices (Total: {activeCells.Count}) ---");
+                                var sortedCells = new List<uint>(activeCells);
+                                sortedCells.Sort();
+                                foreach (uint cellId in sortedCells)
+                                    writer.WriteLine(cellId);
+                                writer.WriteLine($"--- End of Indices ---");
+                            }
+                            Debug.Log($"Successfully saved active cell indices to {activeCellPath}");
+                        }
+                        catch (Exception e)
+                        {
+                            Debug.LogError($"Failed to save active cell indices to file: {e.Message}");
+                        }
+                    }
+
+                    // 시각화를 위해 GPU로 데이터 업로드
+                    /*gs.UploadSplatCellLinkData(GaussianSplatAsset.m_splatcell);*/
+                }
+            }
         }
 
         void MultiEditGUI()

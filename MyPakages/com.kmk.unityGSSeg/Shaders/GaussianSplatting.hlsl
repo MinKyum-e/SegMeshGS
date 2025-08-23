@@ -213,6 +213,7 @@ struct SplatData
     float3 scale;
     half opacity;
     SplatSHData sh;
+    uint cellidx;
 };
 
 // Decode quaternion from a "smallest 3" e.g. 10.10.10.2 format
@@ -315,6 +316,10 @@ SplatBufferDataType _SplatOther;
 SplatBufferDataType _SplatSH;
 Texture2D _SplatColor;
 uint _SplatFormat;
+
+#if defined(SPLAT_CELL_LINK_ENABLED)
+StructuredBuffer<uint> _SplatCellLink;
+#endif
 
 // Match GaussianSplatAsset.VectorFormat
 #define VECTOR_FMT_32F 0
@@ -603,6 +608,11 @@ SplatData LoadSplatData(uint idx)
     }
     s.opacity   = col.a;
     s.sh.col    = col.rgb;
+    #if defined(SPLAT_CELL_LINK_ENABLED)
+    s.cellidx = _SplatCellLink[idx];
+    #else
+    s.cellidx = 0xFFFFFFFF; // Not linked
+    #endif
 
     return s;
 }

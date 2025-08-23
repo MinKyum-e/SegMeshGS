@@ -10,6 +10,11 @@ namespace GaussianSplatting.Runtime
 {
     public class GaussianSplatAsset : ScriptableObject
     {
+        public struct FragmentNode
+        {
+            public uint splatIndex;
+            public uint nextNodeIndex;
+        }
         public const int kCurrentVersion = 2025_08_10;
         public const int kChunkSize = 256;
         public const int kTextureWidth = 2048; // allows up to 32M splats on desktop GPU (2k width x 16k height)
@@ -20,6 +25,10 @@ namespace GaussianSplatting.Runtime
         [SerializeField] Vector3 m_BoundsMin;
         [SerializeField] Vector3 m_BoundsMax;
         [SerializeField] Hash128 m_DataHash;
+        public static uint[] m_windowCell;
+        public static FragmentNode[] nodes;
+        public static uint[] m_splatcell;
+
 
         public int formatVersion => m_FormatVersion;
         public int splatCount => m_SplatCount;
@@ -111,6 +120,8 @@ namespace GaussianSplatting.Runtime
             m_Cameras = cameraInfos;
             m_BoundsMin = bMin;
             m_BoundsMax = bMax;
+            m_windowCell = new uint[m_SplatCount];
+            m_splatcell = new uint[m_SplatCount];
         }
 
         public void SetDataHash(Hash128 hash)

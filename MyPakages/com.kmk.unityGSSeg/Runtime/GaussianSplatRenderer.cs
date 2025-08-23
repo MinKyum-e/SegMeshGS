@@ -157,6 +157,7 @@ namespace GaussianSplatting.Runtime
                 mpb.SetInteger(GaussianSplatRenderer.Props.SHOrder, gs.m_SHOrder);
                 mpb.SetInteger(GaussianSplatRenderer.Props.SHOnly, gs.m_SHOnly ? 1 : 0);
                 mpb.SetInteger(GaussianSplatRenderer.Props.DisplayIndex, gs.m_RenderMode == GaussianSplatRenderer.RenderMode.DebugPointIndices ? 1 : 0);
+                mpb.SetInteger(GaussianSplatRenderer.Props.DisplayInfluenced, gs.m_displayInfluenced ? 1 : 0);
                 mpb.SetInteger(GaussianSplatRenderer.Props.DisplayChunks, gs.m_RenderMode == GaussianSplatRenderer.RenderMode.DebugChunkBounds ? 1 : 0);
 
                 cmb.BeginSample(s_ProfCalcView);
@@ -251,7 +252,11 @@ namespace GaussianSplatting.Runtime
         public int m_SortNthFrame = 1;
 
         public RenderMode m_RenderMode = RenderMode.Splats;
+        public bool m_displayInfluenced = false;
         [Range(1.0f,15.0f)] public float m_PointDisplaySize = 3.0f;
+        
+        [Tooltip("When in Debug Points mode, color splats by the tile they influence")]
+        public bool m_displayTileColor = false;
 
         #if UNITY_EDITOR
         // For camera cycling in editor
@@ -289,6 +294,9 @@ namespace GaussianSplatting.Runtime
         internal bool m_GpuChunksValid;
         internal GraphicsBuffer m_GpuView;
         internal GraphicsBuffer m_GpuIndexBuffer;
+
+        GraphicsBuffer m_GpuSplatTileLink;
+        int2 m_TileGridDim;
 
         // these buffers are only for splat editing, and are lazily created
         GraphicsBuffer m_GpuEditCutouts;
@@ -347,6 +355,7 @@ namespace GaussianSplatting.Runtime
             public static readonly int SHOrder = Shader.PropertyToID("_SHOrder");
             public static readonly int SHOnly = Shader.PropertyToID("_SHOnly");
             public static readonly int DisplayIndex = Shader.PropertyToID("_DisplayIndex");
+            public static readonly int DisplayInfluenced = Shader.PropertyToID("_DisplayInfluence");
             public static readonly int DisplayChunks = Shader.PropertyToID("_DisplayChunks");
             public static readonly int GaussianSplatRT = Shader.PropertyToID("_GaussianSplatRT");
             public static readonly int SplatSortKeys = Shader.PropertyToID("_SplatSortKeys");
@@ -373,6 +382,8 @@ namespace GaussianSplatting.Runtime
             public static readonly int FragmentListCounter = Shader.PropertyToID("_FragmentListCounter");
             public static readonly int TileSize = Shader.PropertyToID("_TileSize");
             public static readonly int MaxFragmentNodes = Shader.PropertyToID("_MaxFragmentNodes");
+            public static readonly int SplatTileLink = Shader.PropertyToID("_SplatTileLink");
+            public static readonly int TileGridDim = Shader.PropertyToID("_TileGridDim");
         }
 
         [field: NonSerialized] public bool editModified { get; private set; }
@@ -380,9 +391,17 @@ namespace GaussianSplatting.Runtime
         [field: NonSerialized] public uint editDeletedSplats { get; private set; }
         [field: NonSerialized] public uint editCutSplats { get; private set; }
         [field: NonSerialized] public Bounds editSelectedBounds { get; private set; }
+        [field: NonSerialized] public uint allocatedFragmentNodes { get; private set; }
 
         public GaussianSplatAsset asset => m_Asset;
         public int splatCount => m_SplatCount;
+
+        public Texture TileHeadPointers => m_TileHeadPointers;
+        public GraphicsBuffer FragmentListBuffer => m_FragmentListBuffer;
+
+
+
+        public GaussianSplatAsset.FragmentNode[] nodes;
 
 
         enum KernelIndices
@@ -404,6 +423,8 @@ namespace GaussianSplatting.Runtime
             CopySplats,
             FindInfluencedCells,
             ClearTileHeadPointers,
+            ClearSplatTileLink,
+            GenerateSplatTileLink,
         }
 
         public bool HasValidAsset =>
@@ -494,6 +515,7 @@ namespace GaussianSplatting.Runtime
             int tilesX = (bufferWidth + tileSize - 1) / tileSize;
             int tilesY = (bufferHeight + tileSize - 1) / tileSize;
 
+            m_TileGridDim = new int2(tilesX, tilesY);
             var rt = new RenderTexture(tilesX, tilesY, 0, GraphicsFormat.R32_UInt)
             {
                 enableRandomWrite = true,
@@ -638,6 +660,7 @@ namespace GaussianSplatting.Runtime
             DisposeBuffer(ref m_FragmentListBuffer);
             DisposeBuffer(ref m_FragmentListCounter);
             DisposeBuffer(ref m_FragmentListCounterReadback);
+            DisposeBuffer(ref m_GpuSplatTileLink);
 
             m_SorterArgs.resources.Dispose();
 
@@ -649,6 +672,7 @@ namespace GaussianSplatting.Runtime
             editCutSplats = 0;
             editModified = false;
             editSelectedBounds = default;
+            allocatedFragmentNodes = 0;
 
             
         }
@@ -736,16 +760,17 @@ namespace GaussianSplatting.Runtime
                  if (request.hasError)
                  {
                      Debug.LogError("[FindInfluencedCells] GPU readback error detected.");
+                     onComplete?.Invoke();
                      return;
                  }
 
                  var data = request.GetData<uint>();
-                 uint allocatedNodes = data[0];
+                 allocatedFragmentNodes = data[0];
                  int totalNodes = listBuffer.count;
-                 float usage = totalNodes > 0 ? (float)allocatedNodes / totalNodes * 100 : 0.0f;
+                 float usage = totalNodes > 0 ? (float)allocatedFragmentNodes / totalNodes * 100 : 0.0f;
 
                  Debug.Log(
-                     $"[FindInfluencedCells] Execution finished. Allocated {allocatedNodes:N0} / {totalNodes:N0} nodes ({usage:F2}% used).");
+                     $"[FindInfluencedCells] Execution finished. Allocated {allocatedFragmentNodes:N0} / {totalNodes:N0} nodes ({usage:F2}% used).");
                  if (usage >= 100.0f)
                  {
                      Debug.LogWarning(
@@ -753,6 +778,93 @@ namespace GaussianSplatting.Runtime
                  }
                  onComplete?.Invoke();
              });
+        }
+
+        public void GenerateSplatTileLink(System.Action onComplete = null)
+        {
+            if (m_TileHeadPointers == null || m_FragmentListBuffer == null)
+            {
+                Debug.LogError("Cannot generate Splat->Tile link. Run 'Find Influenced Cells' first.");
+                onComplete?.Invoke();
+                return;
+            }
+
+            // Ensure the link buffer exists and is the correct size
+            if (m_GpuSplatTileLink == null || m_GpuSplatTileLink.count != splatCount)
+            {
+                DisposeBuffer(ref m_GpuSplatTileLink);
+                m_GpuSplatTileLink = new GraphicsBuffer(GraphicsBuffer.Target.Structured, splatCount, 4) { name = "GpuSplatTileLink" };
+            }
+
+            CommandBuffer cmd = new CommandBuffer() { name = "GenerateSplatTileLink" };
+
+            // 1. Clear the buffer to 0xFFFFFFFF
+            int clearKernel = (int)KernelIndices.ClearSplatTileLink;
+            cmd.SetComputeBufferParam(m_CSSplatUtilities, clearKernel, Props.SplatTileLink, m_GpuSplatTileLink);
+            cmd.SetComputeIntParam(m_CSSplatUtilities, Props.SplatCount, splatCount);
+            m_CSSplatUtilities.GetKernelThreadGroupSizes(clearKernel, out uint gsX_clear, out _, out _);
+            cmd.DispatchCompute(m_CSSplatUtilities, clearKernel, (splatCount + (int)gsX_clear - 1) / (int)gsX_clear, 1, 1);
+
+            // 2. Dispatch the generation kernel
+            int genKernel = (int)KernelIndices.GenerateSplatTileLink;
+            cmd.SetComputeTextureParam(m_CSSplatUtilities, genKernel, Props.TileHeadPointers, m_TileHeadPointers);
+            cmd.SetComputeBufferParam(m_CSSplatUtilities, genKernel, Props.FragmentListBuffer, m_FragmentListBuffer);
+            cmd.SetComputeBufferParam(m_CSSplatUtilities, genKernel, Props.SplatTileLink, m_GpuSplatTileLink);
+            cmd.SetComputeIntParams(m_CSSplatUtilities, Props.TileGridDim, m_TileGridDim.x, m_TileGridDim.y);
+
+            m_CSSplatUtilities.GetKernelThreadGroupSizes(genKernel, out uint gsX_gen, out uint gsY_gen, out _);
+            cmd.DispatchCompute(m_CSSplatUtilities, genKernel, (m_TileGridDim.x + (int)gsX_gen - 1) / (int)gsX_gen, (m_TileGridDim.y + (int)gsY_gen - 1) / (int)gsY_gen, 1);
+
+            Graphics.ExecuteCommandBuffer(cmd);
+            cmd.Dispose();
+    
+            Debug.Log($"[GenerateSplatTileLink] Finished generating splat to tile links for {m_TileGridDim.x * m_TileGridDim.y} tiles.");
+            onComplete?.Invoke();
+        }
+
+        public void RequestTileHeadPointersData(Action<NativeArray<uint>, int, int> onComplete)
+        {
+            if (!(m_TileHeadPointers is RenderTexture rt) || !rt.IsCreated())
+            {
+                Debug.LogError("TileHeadPointers texture is not available or not a RenderTexture. Run FindInfluencedCells first.");
+                onComplete?.Invoke(default, 0, 0);
+                return;
+            }
+
+            AsyncGPUReadback.Request(rt, 0, request =>
+            {
+                if (request.hasError)
+                {
+                    Debug.LogError("GPU readback error for TileHeadPointers.");
+                    onComplete?.Invoke(default, 0, 0);
+                    return;
+                }
+
+                onComplete?.Invoke(request.GetData<uint>(), rt.width, rt.height);
+            });
+        }
+
+        public void RequestFragmentListBufferData(Action<NativeArray<GaussianSplatAsset.FragmentNode>> onComplete)
+        {
+            if (m_FragmentListBuffer == null || m_FragmentListBuffer.count == 0)
+            {
+                Debug.LogError("FragmentListBuffer is not available. Run FindInfluencedCells first.");
+                onComplete?.Invoke(default);
+                return;
+            }
+
+            AsyncGPUReadback.Request(m_FragmentListBuffer, request =>
+            {
+                if (request.hasError)
+                {
+                    Debug.LogError("GPU readback error for FragmentListBuffer.");
+                    onComplete?.Invoke(default);
+                    return;
+                }
+                
+
+                onComplete?.Invoke(request.GetData<GaussianSplatAsset.FragmentNode>());
+            });
         }
 
         internal void CalcViewData(CommandBuffer cmb, Camera cam)

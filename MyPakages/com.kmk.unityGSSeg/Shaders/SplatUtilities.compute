@@ -19,6 +19,8 @@
 #pragma kernel CSCopySplats
 #pragma kernel CSFindInfluencedCells
 #pragma kernel CSClearTileHeadPointers
+#pragma kernel CSClearSplatTileLink
+#pragma kernel CSGenerateSplatTileLink
 
 // DeviceRadixSort
 #pragma multi_compile __ KEY_UINT KEY_INT KEY_FLOAT
@@ -827,4 +829,37 @@ void CSFindInfluencedCells(uint3 id : SV_DispatchThreadID)
 [numthreads(8,8,1)]
 void CSClearTileHeadPointers (uint3 id : SV_DispatchThreadID) {
     _TileHeadPointers[id.xy] = 0xFFFFFFFF;
+}
+
+RWStructuredBuffer<uint> _SplatTileLink;
+uint2 _TileGridDim;
+
+// New kernel to clear the link buffer
+[numthreads(GROUP_SIZE, 1, 1)]
+void CSClearSplatTileLink(uint3 id : SV_DispatchThreadID)
+{
+    uint idx = id.x;
+    if (idx >= _SplatCount)
+        return;
+    _SplatTileLink[idx] = 0xFFFFFFFF;
+}
+
+// New kernel to generate the links
+[numthreads(8, 8, 1)]
+void CSGenerateSplatTileLink(uint3 id : SV_DispatchThreadID)
+{
+    uint2 tileCoord = id.xy;
+    if (tileCoord.x >= _TileGridDim.x || tileCoord.y >= _TileGridDim.y)
+        return;
+
+    uint tileIndex = tileCoord.y * _TileGridDim.x + tileCoord.x;
+    uint nodeIndex = _TileHeadPointers[tileCoord];
+
+    // Traverse the linked list for this tile
+    while (nodeIndex != 0xFFFFFFFF)
+    {
+        FragmentNode node = _FragmentListBuffer[nodeIndex];
+        _SplatTileLink[node.splatIndex] = tileIndex;
+        nodeIndex = node.nextNodeIndex;
+    }
 }

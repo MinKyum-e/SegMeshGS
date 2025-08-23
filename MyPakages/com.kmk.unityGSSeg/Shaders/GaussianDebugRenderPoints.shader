@@ -26,6 +26,7 @@ struct v2f
 
 float _SplatSize;
 bool _DisplayIndex;
+bool _DisplayInfluence;
 int _SplatCount;
 
 v2f vert (uint vtxID : SV_VertexID, uint instID : SV_InstanceID)
@@ -46,6 +47,7 @@ v2f vert (uint vtxID : SV_VertexID, uint instID : SV_InstanceID)
     o.vertex.xy += (quadPos * _SplatSize / _ScreenParams.xy) * o.vertex.w;
 
     o.color.rgb = saturate(splat.sh.col);
+
     if (_DisplayIndex)
     {
         o.color.r = frac((float)splatIndex / (float)_SplatCount * 100);
