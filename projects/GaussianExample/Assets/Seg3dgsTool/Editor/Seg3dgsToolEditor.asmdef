@@ -1,0 +1,18 @@
+{
+    "name": "Seg3dgsToolEditor",
+    "rootNamespace": "Seg3dgsTool.Editor",
+    "references": [
+        "GUID:b0d451c46def72a4c9569a7b7e12f0e4"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
