@@ -1,0 +1,13 @@
+﻿{
+  "author": "MinKyum Kim",
+  "dependencies": { "com.unity.burst": "1.8.8", "com.unity.collections": "2.1.4", "com.unity.mathematics": "1.2.6" },
+  "description": "Unity 3D Gaussian Splatting segmentation tools",
+  "displayName": "UnityGSSeg",
+  "keywords": [ "unity" ],
+  "license": "MIT",
+  "name": "com.kmk.unitygsseg",
+  "repository": "github:MinKyum-e/unity-3dgs-segmentation-tools",
+  "unity": "2022.3",
+  "unityRelease": "7f1",
+  "version": "0.0.1"
+}
