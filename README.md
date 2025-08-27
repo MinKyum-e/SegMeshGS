@@ -39,9 +39,7 @@
 ### 4-2. Object-Specific 3DGS Generation
 1. **SAM & CLIP**  
    - Object recognition and masking in images
-2. **UI Panel**  
-   - Click "Start Game" button → Select desired image  
-   - Click object within the image
+   - Select Object (text)
 3. **Mask Image Generation**  
    - Generate mask for the selected object
 4. **COLMAP (Feature Extraction mode)**  
