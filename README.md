@@ -1,5 +1,5 @@
-# UnitySegGS : Segmentation Object & 3D Gaussian Splatting tool in Unity
-- Unity Version : **2022.3.21f1**
+# UnitySegMeshGS: Segmentation and Meshing Tools for 3D Gaussian Splatting in Unity
+- **Unity Version:** 2022.3.21f1
 
 ---
 
@@ -10,49 +10,39 @@
 # 3D Reconstruction Pipeline
 
 ## 1. Video Input
-- Input format: **`.mp4`**
-- Load video file from user
+- Supported format: **`.mp4`**
+- User uploads a video file
 
 ---
 
 ## 2. Frame Extraction
 - Tool: **FFmpeg**
-- Extract frames from the video
+- Extract frames from the uploaded video
 
 ---
 
 ## 3. Point Cloud Generation
 - Tool: **COLMAP**
-- Generate point cloud via SfM & MVS
+- Generate a point cloud using Structure-from-Motion (SfM) and Multi-View Stereo (MVS)
 
 ---
 
 ## 4. 3D Gaussian Splatting (3DGS)
 
-### 4-1. Standard 3DGS Generation
-- Create **3DGS model (splat)** from COLMAP results
-- Tool: **sugar**  
-  - Run until just before mesh extraction
+### 4-1. Mesh Extraction Tool (SuGaR)
+- Convert COLMAP results into a **3DGS model** using **SuGaR**
+- Steps:
+  - Run SuGaR until just before mesh extraction
+  - If a mesh file (.obj) is needed, execute the mesh extraction process
 
 ---
 
-### 4-2. Object-Specific 3DGS Generation
-1. **SAM & CLIP**  
-   - Object recognition and masking in images
-   - Select Object (text)
-3. **Mask Image Generation**  
-   - Generate mask for the selected object
-4. **COLMAP (Feature Extraction mode)**  
-   - Use `--ImageReader.mask_path` option  
-   - Extract features and reconstruct using masked images
-5. **sugar (with mesh extraction)**  
-   - Generate object-focused 3DGS and mesh
-
----
-
-## 5. Mesh Extraction Feature
-- Provide a separate **Mesh Extraction button**  
-- Allow mesh extraction from splats generated in **4-1**
+### 4-2. Segmentation Tool (SAGA)
+- Convert COLMAP results into a **3DGS model** for segmentation using **SAGA**
+- Steps:
+  - Follow the SAGA pipeline to generate a splat (.ply) containing marking data derived from SAM images
+  - SAGA provides a viewer where users can manually select specific objects for segmentation
+  - After completion, the segmented objects are automatically imported back into Unity
 
 </details>
 
@@ -63,9 +53,12 @@
   <summary>Click to expand</summary>
 
 - **3DGS Viewer**  
-  https://github.com/aras-p/UnityGaussianSplatting  
+  [https://github.com/aras-p/UnityGaussianSplatting](https://github.com/aras-p/UnityGaussianSplatting)  
 
 - **Splat to Mesh (SuGaR)**  
-  https://github.com/Anttwo/SuGaR  
+  [https://github.com/Anttwo/SuGaR](https://github.com/Anttwo/SuGaR)  
+
+- **Splat Segmentation (SAGA)**  
+  [https://github.com/Jumpat/SegAnyGAussians](https://github.com/Jumpat/SegAnyGAussians)  
 
 </details>
