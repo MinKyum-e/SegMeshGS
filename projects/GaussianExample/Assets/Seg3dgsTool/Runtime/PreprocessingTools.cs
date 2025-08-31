@@ -4,6 +4,7 @@ using System.Diagnostics;
 using Debug = UnityEngine.Debug;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 namespace Seg3dgsTool.Runtime
 {
@@ -17,12 +18,12 @@ namespace Seg3dgsTool.Runtime
         private readonly Queue<string> m_LogQueue = new Queue<string>();
         private readonly object m_LogQueueLock = new object();
 
-        public void ExtractFramesFromVideo()
+        public async Task<int> ExtractFramesFromVideo()
         {
             if (string.IsNullOrEmpty(m_VideoPath) || !File.Exists(m_VideoPath))
             {
                 Debug.LogError("Video path is not valid. Please select a video file first.");
-                return;
+                return -1;
             }
 
             string videoName = Path.GetFileNameWithoutExtension(m_VideoPath);
@@ -32,7 +33,7 @@ namespace Seg3dgsTool.Runtime
             string outputPattern = Path.Combine(outputDirectory, "%04d.jpg");
             string command = $"ffmpeg -y -i \"{m_VideoPath}\" -qscale:v 1 -qmin 1 -vf fps=3 \"{outputPattern}\"";
             
-            RunCommandInShell(command);
+            return await RunCommandInShellAsync(command);
         }
 
         private void RunCommandInShell(string command)
@@ -81,16 +82,15 @@ namespace Seg3dgsTool.Runtime
             }
         }
 
-        private async void RunCommandInShellAsync(string command)
+        private async Task<int> RunCommandInShellAsync(string command, [CallerMemberName] string caller="")
         {
             if (IsRunning)
             {
                 Debug.LogWarning("A process is already running.");
-                return;
+                return -1;
             }
-
             IsRunning = true;
-            CurrentStatus = "Starting process...";
+            CurrentStatus = $"Starting process... {caller}";
             Debug.Log($"Executing async command in shell: {command}");
 
             await Task.Run(() =>
@@ -144,12 +144,14 @@ namespace Seg3dgsTool.Runtime
                             m_LogQueue.Enqueue($"Process finished with exit code: {proc.ExitCode}.");
                     }
                 }
+                
             });
 
             IsRunning = false;
 #if UNITY_EDITOR
             UnityEditor.AssetDatabase.Refresh();
 #endif
+            return 0;
         }
         
         private void Update()
@@ -167,44 +169,61 @@ namespace Seg3dgsTool.Runtime
             }
         }
 
+        
 
 
-        public void RunColmapConversion()
+        public async Task<int> RunColmapConversion()
         {
             if (string.IsNullOrEmpty(m_VideoPath) || !File.Exists(m_VideoPath))
             {
                 Debug.LogError("Video path is not valid. Please select a video file first.");
-                return;
+                return -1;
             }
 
             string videoName = Path.GetFileNameWithoutExtension(m_VideoPath);
-
-            // COLMAP 프로젝트 폴더 (내부에 'input' 폴더가 있어야 함)
             string colmapProjectDir = Path.Combine(OutputPath.SourceDataPath, videoName);
 
             if (!Directory.Exists(Path.Combine(colmapProjectDir, "input")))
             {
                 Debug.LogError(
                     $"Image directory not found in '{colmapProjectDir}'. Please run 'Extract Frames with FFmpeg' first.");
-                return;
+                return -1;
             }
 
-            // Python 스크립트가 있는 폴더 경로 (Assets/Seg3dgsTool/PythonScripts)
             string pythonScriptsDir =
                 Path.GetFullPath(Path.Combine(Application.dataPath, "Seg3dgsTool", "PythonScripts"));
 
             if (!File.Exists(Path.Combine(pythonScriptsDir, "convert.py")))
             {
                 Debug.LogError($"Python script 'convert.py' not found in '{pythonScriptsDir}'.");
+                return -1;
+            }
+
+            string command = $"cd /d \"{pythonScriptsDir}\" && python convert.py -s \"{colmapProjectDir}\"";
+
+            return await RunCommandInShellAsync(command);
+        }
+
+        public async void RunColmapFullPipeline()
+        {
+            Debug.Log("Starting Full COLMAP Pipeline...");
+
+            int ffmpegResult = await ExtractFramesFromVideo();
+            if (ffmpegResult != 0)
+            {
+                Debug.LogError("FFmpeg frame extraction failed, stopping pipeline.");
                 return;
             }
 
-#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
-            string command = $"cd /d \"{pythonScriptsDir}\" && python convert.py -s \"{colmapProjectDir}\"";
-#else
-             string command = $"cd \"{pythonScriptsDir}\"; python convert.py -s \"{colmapProjectDir}\"";
-#endif
-            RunCommandInShellAsync(command);
+            int colmapResult = await RunColmapConversion();
+            if (colmapResult != 0)
+            {
+                Debug.LogError("COLMAP conversion failed.");
+                return;
+            }
+            Debug.Log("Full COLMAP Pipeline finished successfully.");
         }
+        
+        
     }
 }
