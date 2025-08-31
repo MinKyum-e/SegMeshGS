@@ -3366,8 +3366,9 @@ GameObject:
   m_Component:
   - component: {fileID: 604009316}
   - component: {fileID: 604009317}
+  - component: {fileID: 604009318}
   m_Layer: 0
-  m_Name: Manager
+  m_Name: 3dgsTools
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -3400,7 +3401,20 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 13742017ae92f6347926fdeb9e049306, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_VideoPath: C:/study/endProject/references/gaussian-splatting/test_video/test2.mp4
+  m_VideoPath: C:/study/endProject/references/gaussian-splatting/test_video/test222.mp4
+--- !u!114 &604009318
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 604009314}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 82b4c90b2e2242428af54129c4f91e81, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_ColmapPath: C:/study/endProject/UnityGaussianSplattingTools/projects/GaussianExample/data/test222
 --- !u!1 &608196292
 GameObject:
   m_ObjectHideFlags: 0
@@ -7139,7 +7153,7 @@ Transform:
   m_GameObject: {fileID: 1462254335}
   serializedVersion: 2
   m_LocalRotation: {x: -0.11529024, y: -0.20603356, z: 0.12139459, w: -0.96411705}
-  m_LocalPosition: {x: -2.6980581, y: -1.5869342, z: -1.2580531}
+  m_LocalPosition: {x: -3.998058, y: -1.5869342, z: -1.2580531}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -7672,7 +7686,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c12d929a7f62c48adbe9ff45c9a33ff0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_Asset: {fileID: 11400000, guid: fb380156769ca774eae75e7ae37f78ed, type: 2}
+  m_Asset: {fileID: 11400000, guid: 77d5cc9e6752c8046a1967ee5a039f25, type: 2}
   m_RenderOrder: 0
   m_SplatScale: 1
   m_OpacityScale: 1
@@ -7680,7 +7694,7 @@ MonoBehaviour:
   m_SHOnly: 0
   m_SortNthFrame: 1
   m_RenderMode: 0
-  m_displayInfluenced: 1
+  m_displayInfluenced: 0
   m_PointDisplaySize: 3
   m_displayTileColor: 0
   m_Cutouts: []
@@ -7690,9 +7704,9 @@ MonoBehaviour:
   m_ShaderDebugBoxes: {fileID: 4800000, guid: 4006f2680fd7c8b4cbcb881454c782be, type: 3}
   m_CSSplatUtilities: {fileID: 7200000, guid: ec84f78b836bd4f96a105d6b804f08bd, type: 3}
   m_CSDominantSplat: {fileID: 0}
-  segCamera: {fileID: 1462254337}
-  tileSize: 10
-  maxFragmentNodes: 8000000
+  segCamera: {fileID: 0}
+  tileSize: 0
+  maxFragmentNodes: 0
 --- !u!4 &1609192435
 Transform:
   m_ObjectHideFlags: 0
@@ -7702,7 +7716,7 @@ Transform:
   m_GameObject: {fileID: 1609192433}
   serializedVersion: 2
   m_LocalRotation: {x: -0.99254614, y: 0, z: 0, w: 0.12186937}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: -0.12, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: -1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -9765,6 +9779,6 @@ SceneRoots:
   m_Roots:
   - {fileID: 231550835}
   - {fileID: 1609192435}
-  - {fileID: 1462254338}
   - {fileID: 274827133}
+  - {fileID: 1462254338}
   - {fileID: 604009316}
