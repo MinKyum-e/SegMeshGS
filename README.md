@@ -1,4 +1,4 @@
-# UnitySegMeshGS: Segmentation and Meshing Tools for 3D Gaussian Splatting in Unity
+# UnitySegMeshGS: Segmentation for 3D Gaussian Splatting in Unity
 - **Unity Version:** 2022.3.21f1
 
 ---
@@ -29,7 +29,14 @@
 
 ## 4. 3D Gaussian Splatting (3DGS)
 
-### 4-1. Mesh Extraction Tool (SuGaR)
+### 4-1. Segmentation Tool (SAGA)
+- Convert COLMAP results into a **3DGS model** for segmentation using **SAGA**
+- Steps:
+  - Follow the SAGA pipeline to generate a splat (.ply) containing marking data derived from SAM images
+  - SAGA provides a viewer where users can manually select specific objects for segmentation
+  - After completion, the segmented objects are automatically imported back into Unity
+    
+### 4-2. Mesh Extraction Tool (SuGaR)
 - Convert COLMAP results into a **3DGS model** using **SuGaR**
 - Steps:
   - Run SuGaR until just before mesh extraction
@@ -37,12 +44,7 @@
 
 ---
 
-### 4-2. Segmentation Tool (SAGA)
-- Convert COLMAP results into a **3DGS model** for segmentation using **SAGA**
-- Steps:
-  - Follow the SAGA pipeline to generate a splat (.ply) containing marking data derived from SAM images
-  - SAGA provides a viewer where users can manually select specific objects for segmentation
-  - After completion, the segmented objects are automatically imported back into Unity
+
 
 </details>
 
