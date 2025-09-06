@@ -86,6 +86,13 @@ namespace Seg3dgsTool.Editor
                 {
                     tool.RunContrastiveTrainingViaServer();
                 }
+                
+                EditorGUILayout.Space(20);
+                EditorGUILayout.LabelField("SAGA GUI", EditorStyles.boldLabel); EditorGUILayout.Space(2);
+                if (GUILayout.Button("Open SAGA GUI"))
+                {
+                    tool.RunSagaGuiViaServer();
+                }
 
 
             }

@@ -224,6 +224,57 @@ namespace Seg3dgsTool.Runtime
             IsRunning = false;
         }
 
+        public async void RunSagaGuiViaServer()
+        {
+            if (IsRunning)
+            {
+                Debug.LogWarning("A process is already running.");
+                return;
+            }
+
+            string videoName = Path.GetFileNameWithoutExtension(m_ColmapPath);
+            string rootFolderWindows = Path.Combine(OutputPath.SourceDataPath, videoName);
+            string rootFolderWsl = ConvertWindowsToWslPath(rootFolderWindows);
+
+            if (string.IsNullOrEmpty(rootFolderWsl)) return;
+            
+            Debug.Log(rootFolderWsl);
+
+            IsRunning = true;
+            CurrentStatus = "Sending SAGA GUI request to server...";
+
+            string jsonPayload = $"{{\"root_folder\": \"{rootFolderWsl}\"}}";
+
+            using (var request = new UnityWebRequest("http://localhost:5001/saga_gui", "POST"))
+            {
+                byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonPayload);
+                request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+                request.downloadHandler = new DownloadHandlerBuffer();
+                request.SetRequestHeader("Content-Type", "application/json");
+
+                var asyncOp = request.SendWebRequest();
+
+                while (!asyncOp.isDone)
+                {
+                    CurrentStatus = $"Waiting for SAGA GUI server response... (Upload: {request.uploadProgress * 100:F0}%)";
+                    await Task.Yield();
+                }
+
+                if (request.result == UnityWebRequest.Result.Success)
+                {
+                    CurrentStatus = "SAGA GUI server responded successfully.";
+                    Debug.Log("Server Response: " + request.downloadHandler.text);
+                }
+                else
+                {
+                    CurrentStatus = $"Error: {request.error}";
+                    Debug.LogError($"Error sending request: {request.error}\nResponse: {request.downloadHandler.text}");
+                }
+            }
+
+            IsRunning = false;
+        }
+
         private string ConvertWindowsToWslPath(string windowsPath)
         {
             if (string.IsNullOrEmpty(windowsPath))

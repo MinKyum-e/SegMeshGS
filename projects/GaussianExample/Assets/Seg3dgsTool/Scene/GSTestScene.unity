@@ -360,72 +360,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 73e81fa7af054f0d8eb371dffccf0b38, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_PlyPath: C:/study/endProject/UnityGaussianSplattingTools/d906415d-7/precomputed_mask6.ply
---- !u!1 &1288997120
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1288997122}
-  - component: {fileID: 1288997121}
-  m_Layer: 0
-  m_Name: GaussianSplat_precomputed_mask6
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &1288997121
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1288997120}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c12d929a7f62c48adbe9ff45c9a33ff0, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_Asset: {fileID: 11400000, guid: 77d5cc9e6752c8046a1967ee5a039f25, type: 2}
-  m_RenderOrder: 0
-  m_SplatScale: 1
-  m_OpacityScale: 1
-  m_SHOrder: 3
-  m_SHOnly: 0
-  m_SortNthFrame: 1
-  m_RenderMode: 0
-  m_displayInfluenced: 0
-  m_PointDisplaySize: 3
-  m_displayTileColor: 0
-  m_Cutouts: []
-  m_ShaderSplats: {fileID: 4800000, guid: ed800126ae8844a67aad1974ddddd59c, type: 3}
-  m_ShaderComposite: {fileID: 4800000, guid: 7e184af7d01193a408eb916d8acafff9, type: 3}
-  m_ShaderDebugPoints: {fileID: 4800000, guid: b44409fc67214394f8f47e4e2648425e, type: 3}
-  m_ShaderDebugBoxes: {fileID: 4800000, guid: 4006f2680fd7c8b4cbcb881454c782be, type: 3}
-  m_CSSplatUtilities: {fileID: 7200000, guid: ec84f78b836bd4f96a105d6b804f08bd, type: 3}
-  m_CSDominantSplat: {fileID: 0}
-  segCamera: {fileID: 0}
-  tileSize: 0
-  maxFragmentNodes: 0
---- !u!4 &1288997122
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1288997120}
-  serializedVersion: 2
-  m_LocalRotation: {x: -0.99254614, y: 0, z: 0, w: 0.12186937}
-  m_LocalPosition: {x: -0.12, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: -1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: -166, y: 0, z: 0}
+  m_PlyPath: C:/study/endProject/UnityGaussianSplattingTools/projects/GaussianExample/data/test222/SAGA/segmentation_objs/precomputed_mask.ply
 --- !u!1 &1462254335
 GameObject:
   m_ObjectHideFlags: 0
@@ -588,4 +523,3 @@ SceneRoots:
   - {fileID: 274827133}
   - {fileID: 1462254338}
   - {fileID: 604009316}
-  - {fileID: 1288997122}
