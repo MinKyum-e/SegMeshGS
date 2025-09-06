@@ -345,7 +345,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_ColmapPath: C:/study/endProject/UnityGaussianSplattingTools/projects/GaussianExample/data/test222
-  m_Downsample: 2
+  m_Downsample: 4
+  m_Iterations: 10000
+  m_NumSampledRays: 1000
 --- !u!114 &604009319
 MonoBehaviour:
   m_ObjectHideFlags: 0

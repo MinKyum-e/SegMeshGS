@@ -11,11 +11,15 @@ namespace Seg3dgsTool.Editor
     {
         SerializedProperty m_ColmapPath;
         SerializedProperty m_Downsample;
+        SerializedProperty m_Iterations;
+        SerializedProperty m_NumSampledRays;
 
         public void OnEnable()
         {
             m_ColmapPath = serializedObject.FindProperty("m_ColmapPath");
             m_Downsample = serializedObject.FindProperty("m_Downsample");
+            m_Iterations = serializedObject.FindProperty("m_Iterations");
+            m_NumSampledRays = serializedObject.FindProperty("m_NumSampledRays");
         }
 
         public override void OnInspectorGUI()
@@ -72,6 +76,17 @@ namespace Seg3dgsTool.Editor
                 {
                     tool.RunGetScaleViaServer();
                 }
+
+                EditorGUILayout.Space(20);
+                EditorGUILayout.LabelField("Train Contrastive Feature", EditorStyles.boldLabel);
+                EditorGUILayout.PropertyField(m_Iterations, new GUIContent("Iterations"));
+                EditorGUILayout.PropertyField(m_NumSampledRays, new GUIContent("Num Sampled Rays"));
+                EditorGUILayout.Space(2);
+                if (GUILayout.Button("Run Contrastive Training"))
+                {
+                    tool.RunContrastiveTrainingViaServer();
+                }
+
 
             }
 

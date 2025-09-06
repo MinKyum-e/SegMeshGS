@@ -23,6 +23,10 @@ namespace Seg3dgsTool.Runtime
         public string m_ColmapPath;
         [Tooltip("Downsample factor for the images.")]
         public DownsampleFactor m_Downsample = DownsampleFactor.x4;
+        [Header("Contrastive Training Settings")]
+        public int m_Iterations = 10000;
+        public int m_NumSampledRays = 1000;
+
 
         public Segment3dgs()
         {
@@ -159,6 +163,55 @@ namespace Seg3dgsTool.Runtime
                 if (request.result == UnityWebRequest.Result.Success)
                 {
                     CurrentStatus = "Get_scale server responded successfully.";
+                    Debug.Log("Server Response: " + request.downloadHandler.text);
+                }
+                else
+                {
+                    CurrentStatus = $"Error: {request.error}";
+                    Debug.LogError($"Error sending request: {request.error}\nResponse: {request.downloadHandler.text}");
+                }
+            }
+
+            IsRunning = false;
+        }
+
+        public async void RunContrastiveTrainingViaServer()
+        {
+            if (IsRunning)
+            {
+                Debug.LogWarning("A process is already running.");
+                return;
+            }
+
+            string videoName = Path.GetFileNameWithoutExtension(m_ColmapPath);
+            string imageRootDirWindows = Path.Combine(OutputPath.SourceDataPath, videoName);
+            string imageRootDirWsl = ConvertWindowsToWslPath(imageRootDirWindows);
+
+            if (string.IsNullOrEmpty(imageRootDirWsl)) return;
+
+            IsRunning = true;
+            CurrentStatus = "Sending contrastive training request to server...";
+
+            string jsonPayload = $"{{\"image_root\": \"{imageRootDirWsl}\", \"iterations\": {m_Iterations}, \"num_sampled_rays\": {m_NumSampledRays}}}";
+
+            using (var request = new UnityWebRequest("http://localhost:5001/train_contrastive", "POST"))
+            {
+                byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonPayload);
+                request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+                request.downloadHandler = new DownloadHandlerBuffer();
+                request.SetRequestHeader("Content-Type", "application/json");
+
+                var asyncOp = request.SendWebRequest();
+
+                while (!asyncOp.isDone)
+                {
+                    CurrentStatus = $"Waiting for contrastive training server response... (Upload: {request.uploadProgress * 100:F0}%)";
+                    await Task.Yield();
+                }
+
+                if (request.result == UnityWebRequest.Result.Success)
+                {
+                    CurrentStatus = "Contrastive training server responded successfully.";
                     Debug.Log("Server Response: " + request.downloadHandler.text);
                 }
                 else
