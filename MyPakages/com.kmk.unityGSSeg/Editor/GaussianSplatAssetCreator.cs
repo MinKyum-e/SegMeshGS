@@ -24,7 +24,7 @@ namespace GaussianSplatting.Editor
         const string kPrefQuality = "GaussianSplatting.CreatorQuality";
         const string kPrefOutputFolder = "GaussianSplatting.CreatorOutputFolder";
 
-        enum DataQuality
+        public enum DataQuality
         {
             VeryHigh,
             High,
@@ -226,7 +226,106 @@ namespace GaussianSplatting.Editor
                     throw new ArgumentOutOfRangeException();
             }
         }
+        public static unsafe GaussianSplatAsset CreateAssetFromPath(
+            string plyPath,
+            string outputFolder = "Assets/GaussianAssets",
+            DataQuality quality = DataQuality.Medium,
+            bool importCameras = true)
+        {
+            if (string.IsNullOrWhiteSpace(plyPath) || !File.Exists(plyPath))
+            {
+                Debug.LogError($"[GaussianSplatAssetCreator] Input PLY file is not valid: {plyPath}");
+                return null;
+            }
 
+            if (string.IsNullOrWhiteSpace(outputFolder) || !outputFolder.StartsWith("Assets/"))
+            {
+                Debug.LogError($"[GaussianSplatAssetCreator] Output folder must be within project 'Assets/' folder. Was: '{outputFolder}'");
+                return null;
+            }
+            Directory.CreateDirectory(outputFolder);
+
+            var creator = CreateInstance<GaussianSplatAssetCreator>();
+            creator.m_Quality = quality;
+            creator.ApplyQualityLevel();
+
+            string baseName = Path.GetFileNameWithoutExtension(plyPath);
+
+            try
+            {
+                EditorUtility.DisplayProgressBar(kProgressTitle, $"Reading {baseName}...", 0.0f);
+                GaussianFileReader.ReadFile(plyPath, out var inputSplats);
+                if (inputSplats.Length == 0)
+                {
+                    Debug.LogError($"[GaussianSplatAssetCreator] No splat data found in file or failed to read: {plyPath}");
+                    return null;
+                }
+                
+                GaussianSplatAsset.CameraInfo[] cameras = LoadJsonCamerasFile(plyPath, importCameras);
+
+                float3 boundsMin, boundsMax;
+                var boundsJob = new CalcBoundsJob { m_BoundsMin = &boundsMin, m_BoundsMax = &boundsMax, m_SplatData = inputSplats };
+                boundsJob.Schedule().Complete();
+
+                EditorUtility.DisplayProgressBar(kProgressTitle, "Morton reordering...", 0.05f);
+                ReorderMorton(inputSplats, boundsMin, boundsMax);
+
+                NativeArray<int> splatSHIndices = default;
+                NativeArray<GaussianSplatAsset.SHTableItemFloat16> clusteredSHs = default;
+                if (creator.m_FormatSH >= GaussianSplatAsset.SHFormat.Cluster64k)
+                {
+                    EditorUtility.DisplayProgressBar(kProgressTitle, "Clustering SHs...", 0.2f);
+                    ClusterSHs(inputSplats, creator.m_FormatSH, out clusteredSHs, out splatSHIndices);
+                }
+
+                EditorUtility.DisplayProgressBar(kProgressTitle, "Creating data objects...", 0.7f);
+                GaussianSplatAsset asset = CreateInstance<GaussianSplatAsset>();
+                asset.Initialize(inputSplats.Length, creator.m_FormatPos, creator.m_FormatScale, creator.m_FormatColor, creator.m_FormatSH, boundsMin, boundsMax, cameras);
+                asset.name = baseName;
+
+                var dataHash = new Hash128((uint)asset.splatCount, (uint)asset.formatVersion, 0, 0);
+                string pathChunk = $"{outputFolder}/{baseName}_chk.bytes";
+                string pathPos = $"{outputFolder}/{baseName}_pos.bytes";
+                string pathOther = $"{outputFolder}/{baseName}_oth.bytes";
+                string pathCol = $"{outputFolder}/{baseName}_col.bytes";
+                string pathSh = $"{outputFolder}/{baseName}_shs.bytes";
+
+                bool useChunks = creator.isUsingChunks;
+                if (useChunks)
+                    CreateChunkData(inputSplats, pathChunk, ref dataHash);
+                creator.CreatePositionsData(inputSplats, pathPos, ref dataHash);
+                creator.CreateOtherData(inputSplats, pathOther, ref dataHash, splatSHIndices);
+                creator.CreateColorData(inputSplats, pathCol, ref dataHash);
+                creator.CreateSHData(inputSplats, pathSh, ref dataHash, clusteredSHs);
+                asset.SetDataHash(dataHash);
+
+                splatSHIndices.Dispose();
+                clusteredSHs.Dispose();
+                inputSplats.Dispose();
+
+                EditorUtility.DisplayProgressBar(kProgressTitle, "Importing assets...", 0.85f);
+                AssetDatabase.Refresh(ImportAssetOptions.ForceUncompressedImport);
+
+                EditorUtility.DisplayProgressBar(kProgressTitle, "Setting up asset...", 0.95f);
+                asset.SetAssetFiles(
+                    useChunks ? AssetDatabase.LoadAssetAtPath<TextAsset>(pathChunk) : null,
+                    AssetDatabase.LoadAssetAtPath<TextAsset>(pathPos),
+                    AssetDatabase.LoadAssetAtPath<TextAsset>(pathOther),
+                    AssetDatabase.LoadAssetAtPath<TextAsset>(pathCol),
+                    AssetDatabase.LoadAssetAtPath<TextAsset>(pathSh));
+
+                string assetPath = $"{outputFolder}/{baseName}.asset";
+                var savedAsset = CreateOrReplaceAsset(asset, assetPath);
+
+                AssetDatabase.SaveAssets();
+                return savedAsset;
+            }
+            finally
+            {
+                DestroyImmediate(creator);
+                EditorUtility.ClearProgressBar();
+            }
+        }
 
         static T CreateOrReplaceAsset<T>(T asset, string path) where T : UnityEngine.Object
         {
@@ -247,96 +346,12 @@ namespace GaussianSplatting.Editor
         unsafe void CreateAsset()
         {
             m_ErrorMessage = null;
-            if (string.IsNullOrWhiteSpace(m_InputFile))
-            {
-                m_ErrorMessage = $"Select input PLY/SPZ file";
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(m_OutputFolder) || !m_OutputFolder.StartsWith("Assets/"))
-            {
-                m_ErrorMessage = $"Output folder must be within project, was '{m_OutputFolder}'";
-                return;
-            }
-            Directory.CreateDirectory(m_OutputFolder);
-
-            EditorUtility.DisplayProgressBar(kProgressTitle, "Reading data files", 0.0f);
-            GaussianSplatAsset.CameraInfo[] cameras = LoadJsonCamerasFile(m_InputFile, m_ImportCameras);
-            using NativeArray<InputSplatData> inputSplats = LoadInputSplatFile(m_InputFile);
-            if (inputSplats.Length == 0)
-            {
-                EditorUtility.ClearProgressBar();
-                return;
-            }
-
-            float3 boundsMin, boundsMax;
-            var boundsJob = new CalcBoundsJob
-            {
-                m_BoundsMin = &boundsMin,
-                m_BoundsMax = &boundsMax,
-                m_SplatData = inputSplats
-            };
-            boundsJob.Schedule().Complete();
-
-            EditorUtility.DisplayProgressBar(kProgressTitle, "Morton reordering", 0.05f);
-            ReorderMorton(inputSplats, boundsMin, boundsMax);
-
-            // cluster SHs
-            NativeArray<int> splatSHIndices = default;
-            NativeArray<GaussianSplatAsset.SHTableItemFloat16> clusteredSHs = default;
-            if (m_FormatSH >= GaussianSplatAsset.SHFormat.Cluster64k)
-            {
-                EditorUtility.DisplayProgressBar(kProgressTitle, "Cluster SHs", 0.2f);
-                ClusterSHs(inputSplats, m_FormatSH, out clusteredSHs, out splatSHIndices);
-            }
-
-            string baseName = Path.GetFileNameWithoutExtension(FilePickerControl.PathToDisplayString(m_InputFile));
-
-            EditorUtility.DisplayProgressBar(kProgressTitle, "Creating data objects", 0.7f);
-            GaussianSplatAsset asset = ScriptableObject.CreateInstance<GaussianSplatAsset>();
-            asset.Initialize(inputSplats.Length, m_FormatPos, m_FormatScale, m_FormatColor, m_FormatSH, boundsMin, boundsMax, cameras);
-            asset.name = baseName;
-
-            var dataHash = new Hash128((uint)asset.splatCount, (uint)asset.formatVersion, 0, 0);
-            string pathChunk = $"{m_OutputFolder}/{baseName}_chk.bytes";
-            string pathPos = $"{m_OutputFolder}/{baseName}_pos.bytes";
-            string pathOther = $"{m_OutputFolder}/{baseName}_oth.bytes";
-            string pathCol = $"{m_OutputFolder}/{baseName}_col.bytes";
-            string pathSh = $"{m_OutputFolder}/{baseName}_shs.bytes";
-
-            // if we are using full lossless (FP32) data, then do not use any chunking, and keep data as-is
-            bool useChunks = isUsingChunks;
-            if (useChunks)
-                CreateChunkData(inputSplats, pathChunk, ref dataHash);
-            CreatePositionsData(inputSplats, pathPos, ref dataHash);
-            CreateOtherData(inputSplats, pathOther, ref dataHash, splatSHIndices);
-            CreateColorData(inputSplats, pathCol, ref dataHash);
-            CreateSHData(inputSplats, pathSh, ref dataHash, clusteredSHs);
-            asset.SetDataHash(dataHash);
-
-            splatSHIndices.Dispose();
-            clusteredSHs.Dispose();
-
-            // files are created, import them so we can get to the imported objects, ugh
-            EditorUtility.DisplayProgressBar(kProgressTitle, "Initial texture import", 0.85f);
-            AssetDatabase.Refresh(ImportAssetOptions.ForceUncompressedImport);
-
-            EditorUtility.DisplayProgressBar(kProgressTitle, "Setup data onto asset", 0.95f);
-            asset.SetAssetFiles(
-                useChunks ? AssetDatabase.LoadAssetAtPath<TextAsset>(pathChunk) : null,
-                AssetDatabase.LoadAssetAtPath<TextAsset>(pathPos),
-                AssetDatabase.LoadAssetAtPath<TextAsset>(pathOther),
-                AssetDatabase.LoadAssetAtPath<TextAsset>(pathCol),
-                AssetDatabase.LoadAssetAtPath<TextAsset>(pathSh));
-
-            var assetPath = $"{m_OutputFolder}/{baseName}.asset";
-            var savedAsset = CreateOrReplaceAsset(asset, assetPath);
-
-            EditorUtility.DisplayProgressBar(kProgressTitle, "Saving assets", 0.99f);
-            AssetDatabase.SaveAssets();
-            EditorUtility.ClearProgressBar();
-
-            Selection.activeObject = savedAsset;
+            // UI에서 버튼을 눌렀을 때, 새로 만든 자동화 메서드를 호출합니다.
+            var asset = CreateAssetFromPath(m_InputFile, m_OutputFolder, m_Quality, m_ImportCameras);
+            if (asset != null)
+                Selection.activeObject = asset;
+            else
+                m_ErrorMessage = "Failed to create asset. Check console for details.";
         }
 
         NativeArray<InputSplatData> LoadInputSplatFile(string filePath)

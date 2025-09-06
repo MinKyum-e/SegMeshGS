@@ -2,6 +2,8 @@
     "name": "Seg3dgsTool",
     "rootNamespace": "Seg3dgsTool.Runtime",
     "references": [
+        "GUID:4b653174f8fcdcd49b4c9a6f1ca8c7c3",
+        "GUID:14414175af4b366469db63f2efee475f"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
