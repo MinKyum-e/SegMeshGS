@@ -345,6 +345,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_ColmapPath: C:/study/endProject/UnityGaussianSplattingTools/projects/GaussianExample/data/test222
+  m_Downsample: 2
 --- !u!114 &604009319
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -567,6 +568,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: GaussianSplats
       objectReference: {fileID: 0}
+    - target: {fileID: 9197153660322173370, guid: 8d5f9cd00e898ea4eaab0036c08fbbc0, type: 3}
+      propertyPath: m_Asset
+      value: 
+      objectReference: {fileID: 11400000, guid: 457bfa3202e5bbc48b391047182b6e39, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
