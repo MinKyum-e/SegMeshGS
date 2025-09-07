@@ -272,7 +272,7 @@ class GaussianSplattingGUI:
 
     def save_segmented_gaussians_as_ply(self, save_path):
         """
-        세그멘테이션된 가우시안들만 PLY 파일로 저장
+        세그멘테이션된 가우시안들만 PLY 파일로 저장 (로컬 좌표계로 변환)
         """
         if not PLY_AVAILABLE:
             print("Error: plyfile library not available. Please install with: pip install plyfile")
@@ -297,54 +297,38 @@ class GaussianSplattingGUI:
             print(f"  - _scaling shape: {self.engine['scene']._scaling.shape}")
             print(f"  - _rotation shape: {self.engine['scene']._rotation.shape}")
             
-            # 마스크 크기와 데이터 크기가 일치하지 않는 경우 처리
-            # scene_data_size = self.engine['scene']._xyz.shape[0]
-            # mask_size = mask.shape[0]
+            # 선택된 가우시안들의 파라미터 추출 (마스크 적용)
+            xyz_full = self.engine['scene']._xyz.detach().cpu().numpy()
+            xyz_selected = xyz_full[mask.cpu().numpy()]
             
-            # if scene_data_size != mask_size:
-            #     print(f"Warning: Size mismatch detected. Scene data: {scene_data_size}, Mask: {mask_size}")
-                
-            #     # 마스크 크기를 데이터 크기에 맞춤
-            #     if scene_data_size < mask_size:
-            #         print(f"Truncating mask from {mask_size} to {scene_data_size}")
-            #         mask = mask[:scene_data_size]
-            #     else:
-            #         print(f"Padding mask from {mask_size} to {scene_data_size}")
-            #         new_mask = torch.zeros(scene_data_size, dtype=mask.dtype, device=mask.device)
-            #         new_mask[:mask_size] = mask
-            #         mask = new_mask
+            # 세그멘테이션된 객체의 중심점 계산
+            center = np.mean(xyz_selected, axis=0)
+            print(f"Object center: {center}")
             
-            # # 실제로 선택될 가우시안 수 재계산
-            # selected_count = mask.sum().item()
-            # print(f"Actually selecting {selected_count} gaussians")
+            # 로컬 좌표계로 변환 (중심점을 원점으로 이동)
+            xyz = xyz_selected - center
+            print(f"Extracted xyz (centered): {xyz.shape}")
             
-            # if selected_count == 0:
-            #     print("No gaussians selected after size adjustment!")
-            #     return False
-            
-            # 선택된 가우시안들의 파라미터 추출
-            xyz = self.engine['scene']._xyz.detach().cpu().numpy()
-            print(f"Extracted xyz: {xyz.shape}")
-            
-            # features_dc 차원 체크 및 안전한 추출
+            # features_dc 차원 체크 및 안전한 추출 (마스크 적용)
             features_dc_raw = self.engine['scene']._features_dc.detach().cpu().numpy()
             if len(features_dc_raw.shape) == 3:  # (N, 1, 3) 형태
-                features_dc = features_dc_raw.reshape(-1, 3)
+                features_dc = features_dc_raw[mask.cpu().numpy()].reshape(-1, 3)
             else:  # (N, 3) 형태
-                features_dc = features_dc_raw
+                features_dc = features_dc_raw[mask.cpu().numpy()]
             print(f"Extracted features_dc: {features_dc.shape}")
                 
-            # features_rest 차원 체크 및 안전한 추출  
+            # features_rest 차원 체크 및 안전한 추출 (마스크 적용)
             features_rest_raw = self.engine['scene']._features_rest.detach().cpu().numpy()
             if len(features_rest_raw.shape) == 3:  # (N, 15, 3) 형태
-                features_rest = features_rest_raw.reshape(-1, 45)  # 15*3=45
+                features_rest = features_rest_raw[mask.cpu().numpy()].reshape(-1, 45)  # 15*3=45
             else:  # 이미 (N, 45) 형태
-                features_rest = features_rest_raw
+                features_rest = features_rest_raw[mask.cpu().numpy()]
             print(f"Extracted features_rest: {features_rest.shape}")
                 
-            opacity = self.engine['scene']._opacity.detach().cpu().numpy()
-            scaling = self.engine['scene']._scaling.detach().cpu().numpy()
-            rotation = self.engine['scene']._rotation.detach().cpu().numpy()
+            # 나머지 파라미터들도 마스크 적용
+            opacity = self.engine['scene']._opacity.detach().cpu().numpy()[mask.cpu().numpy()]
+            scaling = self.engine['scene']._scaling.detach().cpu().numpy()[mask.cpu().numpy()]
+            rotation = self.engine['scene']._rotation.detach().cpu().numpy()[mask.cpu().numpy()]
             print(f"Extracted opacity: {opacity.shape}, scaling: {scaling.shape}, rotation: {rotation.shape}")
             
             # 피처 가우시안도 함께 저장하고 싶다면
@@ -599,13 +583,15 @@ class GaussianSplattingGUI:
             
             dpg.add_text("\nSave options: ", tag="save_options")
             dpg.add_button(label="save as .pt", callback=callback_save, user_data="Some Data")
+            dpg.add_input_text(label="PT filename", default_value="precomputed_mask", tag="save_name")
+            
             if PLY_AVAILABLE:
                 dpg.add_button(label="save as PLY", callback=callback_save_ply, user_data="Some Data")
+                dpg.add_input_text(label="PLY filename", default_value="segmented_object", tag="ply_save_name")
                 dpg.add_button(label="save all objects PLY", callback=callback_save_all_objects, user_data="Some Data")
             else:
                 dpg.add_text("PLY export disabled (install plyfile)", color=(255, 100, 100))
             
-            dpg.add_input_text(label="", default_value="precomputed_mask", tag="save_name")
             dpg.add_text("\n")
 
             dpg.add_button(label="cluster3d", callback=callback_cluster, user_data="Some Data")
@@ -944,14 +930,23 @@ class GaussianSplattingGUI:
                 with dpg.window(label="Tips"):
                     dpg.add_text('You should segment the 3D object before save it (click segment3d first).')
 
-        # PLY 저장 처리 추가
         if self.save_ply_flag:
             print("Saving segmented gaussians as PLY...")
             self.save_ply_flag = False
+            seg_output_folder = args.model_path + "/segmentation_objs" 
             try:
-                os.makedirs("./segmentation_res", exist_ok=True)
-                save_path = f"./segmentation_res/{dpg.get_value('save_name')}.ply"
+                os.makedirs(seg_output_folder, exist_ok=True)
+                ply_filename = dpg.get_value('ply_save_name')
+                
+                if not ply_filename.endswith('.ply'):
+                    ply_filename += '.ply'
+                
+                import re
+                ply_filename = re.sub(r'[<>:"/\\|?*]', '_', ply_filename)
+                
+                save_path = os.path.join(seg_output_folder, ply_filename)
                 self.save_segmented_gaussians_as_ply(save_path)
+                print(f"PLY file saved as: {save_path}")
             except Exception as e:
                 print(f"Error: {e}")
                 with dpg.window(label="Tips"):
