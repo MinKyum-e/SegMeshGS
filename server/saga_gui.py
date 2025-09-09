@@ -28,12 +28,11 @@ from scipy.spatial.transform import Rotation as R
 # from cuml.cluster.hdbscan import HDBSCAN
 from hdbscan import HDBSCAN
 
-# PLY 저장을 위한 추가 import
+# PLY 저장
 try:
     from plyfile import PlyData, PlyElement
     PLY_AVAILABLE = True
 except ImportError:
-    print("Warning: plyfile not available. PLY export will be disabled.")
     PLY_AVAILABLE = False
 
 def depth2img(depth):
@@ -263,23 +262,16 @@ class GaussianSplattingGUI:
 
         self.save_flag = False
         
-        # PLY 저장 관련 플래그들 추가
         self.save_ply_flag = False
-        self.save_all_objects_flag = False
-
     def __del__(self):
         dpg.destroy_context()
 
     def save_segmented_gaussians_as_ply(self, save_path):
-        """
-        세그멘테이션된 가우시안들만 PLY 파일로 저장 (로컬 좌표계로 변환)
-        """
         if not PLY_AVAILABLE:
             print("Error: plyfile library not available. Please install with: pip install plyfile")
             return False
             
         try:
-            # 현재 세그멘테이션 마스크 가져오기
             mask = self.engine['scene']._mask == self.engine['scene'].segment_times + 1
             
             if mask.sum() == 0:
@@ -288,7 +280,6 @@ class GaussianSplattingGUI:
                 
             print(f"Saving {mask.sum()} gaussians out of {mask.shape[0]} total gaussians...")
             
-            # 디버깅: 실제 데이터 크기 확인
             print(f"Debug info:")
             print(f"  - Mask shape: {mask.shape}, True count: {mask.sum()}")
             print(f"  - _xyz shape: {self.engine['scene']._xyz.shape}")
@@ -297,66 +288,31 @@ class GaussianSplattingGUI:
             print(f"  - _scaling shape: {self.engine['scene']._scaling.shape}")
             print(f"  - _rotation shape: {self.engine['scene']._rotation.shape}")
             
-            # 선택된 가우시안들의 파라미터 추출 (마스크 적용)
-            xyz_full = self.engine['scene']._xyz.detach().cpu().numpy()
-            xyz_selected = xyz_full[mask.cpu().numpy()]
+            # 선택된 가우시안들의 파라미터 추출
+            xyz = self.engine['scene']._xyz.detach().cpu().numpy()
+            print(f"Extracted xyz: {xyz.shape}")
             
-            # 세그멘테이션된 객체의 중심점 계산
-            center = np.mean(xyz_selected, axis=0)
-            print(f"Object center: {center}")
-            
-            # 로컬 좌표계로 변환 (중심점을 원점으로 이동)
-            xyz = xyz_selected - center
-            print(f"Extracted xyz (centered): {xyz.shape}")
-            
-            # features_dc 차원 체크 및 안전한 추출 (마스크 적용)
+            # features_dc 차원 체크 및 안전한 추출
             features_dc_raw = self.engine['scene']._features_dc.detach().cpu().numpy()
             if len(features_dc_raw.shape) == 3:  # (N, 1, 3) 형태
-                features_dc = features_dc_raw[mask.cpu().numpy()].reshape(-1, 3)
+                features_dc = features_dc_raw.reshape(-1, 3)
             else:  # (N, 3) 형태
-                features_dc = features_dc_raw[mask.cpu().numpy()]
+                features_dc = features_dc_raw
             print(f"Extracted features_dc: {features_dc.shape}")
                 
-            # features_rest 차원 체크 및 안전한 추출 (마스크 적용)
+            # features_rest 차원 체크 및 안전한 추출  
             features_rest_raw = self.engine['scene']._features_rest.detach().cpu().numpy()
             if len(features_rest_raw.shape) == 3:  # (N, 15, 3) 형태
-                features_rest = features_rest_raw[mask.cpu().numpy()].reshape(-1, 45)  # 15*3=45
+                features_rest = features_rest_raw.reshape(-1, 45)  # 15*3=45
             else:  # 이미 (N, 45) 형태
-                features_rest = features_rest_raw[mask.cpu().numpy()]
+                features_rest = features_rest_raw
             print(f"Extracted features_rest: {features_rest.shape}")
                 
-            # 나머지 파라미터들도 마스크 적용
-            opacity = self.engine['scene']._opacity.detach().cpu().numpy()[mask.cpu().numpy()]
-            scaling = self.engine['scene']._scaling.detach().cpu().numpy()[mask.cpu().numpy()]
-            rotation = self.engine['scene']._rotation.detach().cpu().numpy()[mask.cpu().numpy()]
+            opacity = self.engine['scene']._opacity.detach().cpu().numpy()
+            scaling = self.engine['scene']._scaling.detach().cpu().numpy()
+            rotation = self.engine['scene']._rotation.detach().cpu().numpy()
             print(f"Extracted opacity: {opacity.shape}, scaling: {scaling.shape}, rotation: {rotation.shape}")
-            
-            # 피처 가우시안도 함께 저장하고 싶다면
-            # point_features = None
-            # if hasattr(self.engine['feature'], 'get_point_features'):
-            #     try:
-            #         point_features_raw = self.engine['feature'].get_point_features
-            #         if point_features_raw is not None:
-            #             # 마스크 크기가 일치하는지 확인
-            #             feature_data_size = point_features_raw.shape[0]
-            #             if feature_data_size == mask.shape[0]:
-            #                 point_features = point_features_raw[mask].detach().cpu().numpy()
-            #                 print(f"Extracted point_features: {point_features.shape}")
-            #             else:
-            #                 print(f"Warning: Feature size mismatch. Scene: {mask.shape[0]}, Features: {feature_data_size}")
-            #                 # 크기 조정
-            #                 if feature_data_size < mask.shape[0]:
-            #                     feature_mask = mask[:feature_data_size]
-            #                 else:
-            #                     feature_mask = torch.zeros(feature_data_size, dtype=mask.dtype, device=mask.device)
-            #                     feature_mask[:mask.shape[0]] = mask
-                            
-            #                 if feature_mask.sum() > 0:
-            #                     point_features = point_features_raw[feature_mask].detach().cpu().numpy()
-            #                     print(f"Adjusted and extracted point_features: {point_features.shape}")
-            #     except Exception as e:
-            #         print(f"Warning: Could not extract point features: {e}")
-            #         point_features = None
+        
             
             # PLY 형식으로 저장할 데이터 준비
             dtype_full = [(attribute, 'f4') for attribute in ['x', 'y', 'z']]  # xyz
@@ -366,9 +322,6 @@ class GaussianSplattingGUI:
             dtype_full += [(f'scale_{i}', 'f4') for i in range(3)]  # scaling
             dtype_full += [(f'rot_{i}', 'f4') for i in range(4)]  # rotation
             
-            # 피처도 함께 저장
-            # if point_features is not None:
-            #     dtype_full += [(f'feature_{i}', 'f4') for i in range(point_features.shape[1])]
             
             # 데이터 배열 생성
             elements = np.empty(xyz.shape[0], dtype=dtype_full)
@@ -400,11 +353,6 @@ class GaussianSplattingGUI:
             for i in range(4):
                 elements[f'rot_{i}'] = rotation[:, i]
                 
-            # Features (선택적)
-            # if point_features is not None:
-            #     for i in range(point_features.shape[1]):
-            #         elements[f'feature_{i}'] = point_features[:, i]
-            
             # PLY 파일로 저장
             el = PlyElement.describe(elements, 'vertex')
             PlyData([el]).write(save_path)
@@ -413,8 +361,6 @@ class GaussianSplattingGUI:
             print(f"  - Points: {xyz.shape}")
             print(f"  - Features DC: {features_dc.shape}")
             print(f"  - Features Rest: {features_rest.shape}")
-            # if point_features is not None:
-            #     print(f"  - Point Features: {point_features.shape}")
             return True
             
         except Exception as e:
@@ -423,44 +369,6 @@ class GaussianSplattingGUI:
             print("Full traceback:")
             print(traceback.format_exc())
             return False
-
-    def save_all_segmented_objects(self, base_dir="./segmented_objects"):
-        """
-        현재까지 세그멘테이션된 모든 객체들을 개별 PLY 파일로 저장
-        """
-        if not PLY_AVAILABLE:
-            print("Error: plyfile library not available. Please install with: pip install plyfile")
-            return 0
-            
-        os.makedirs(base_dir, exist_ok=True)
-        
-        try:
-            # 세그멘테이션 히스토리에서 모든 객체 추출
-            unique_masks = torch.unique(self.engine['scene']._mask)
-            saved_count = 0
-            
-            for mask_id in unique_masks:
-                if mask_id == 0:  # 배경은 제외
-                    continue
-                    
-                # 각 객체별로 임시 마스크 설정
-                temp_segment_times = self.engine['scene'].segment_times
-                self.engine['scene'].segment_times = mask_id - 1
-                
-                save_path = os.path.join(base_dir, f"object_{mask_id:03d}.ply")
-                
-                if self.save_segmented_gaussians_as_ply(save_path):
-                    saved_count += 1
-                    
-            # 원래 상태 복구
-            self.engine['scene'].segment_times = temp_segment_times
-            
-            print(f"Saved {saved_count} segmented objects to {base_dir}")
-            return saved_count
-            
-        except Exception as e:
-            print(f"Error saving all objects: {e}")
-            return 0
 
     def prepare_buffer(self, outputs):
         if self.model == "images":
@@ -529,11 +437,7 @@ class GaussianSplattingGUI:
         def callback_save():
             self.save_flag = True
         def callback_save_ply():
-            """PLY로 저장하는 콜백"""
             self.save_ply_flag = True
-        def callback_save_all_objects():
-            """모든 객체를 PLY로 저장하는 콜백"""
-            self.save_all_objects_flag = True
         def callback_reload():
             self.reload_flag = True
         def callback_cluster():
@@ -583,15 +487,12 @@ class GaussianSplattingGUI:
             
             dpg.add_text("\nSave options: ", tag="save_options")
             dpg.add_button(label="save as .pt", callback=callback_save, user_data="Some Data")
-            dpg.add_input_text(label="PT filename", default_value="precomputed_mask", tag="save_name")
-            
             if PLY_AVAILABLE:
                 dpg.add_button(label="save as PLY", callback=callback_save_ply, user_data="Some Data")
-                dpg.add_input_text(label="PLY filename", default_value="segmented_object", tag="ply_save_name")
-                dpg.add_button(label="save all objects PLY", callback=callback_save_all_objects, user_data="Some Data")
             else:
                 dpg.add_text("PLY export disabled (install plyfile)", color=(255, 100, 100))
             
+            dpg.add_input_text(label="", default_value="precomputed_mask", tag="save_name")
             dpg.add_text("\n")
 
             dpg.add_button(label="cluster3d", callback=callback_cluster, user_data="Some Data")
@@ -930,32 +831,20 @@ class GaussianSplattingGUI:
                 with dpg.window(label="Tips"):
                     dpg.add_text('You should segment the 3D object before save it (click segment3d first).')
 
+        # PLY 저장 처리 추가
         if self.save_ply_flag:
             print("Saving segmented gaussians as PLY...")
             self.save_ply_flag = False
             seg_output_folder = args.model_path + "/segmentation_objs" 
             try:
                 os.makedirs(seg_output_folder, exist_ok=True)
-                ply_filename = dpg.get_value('ply_save_name')
-                
-                if not ply_filename.endswith('.ply'):
-                    ply_filename += '.ply'
-                
-                import re
-                ply_filename = re.sub(r'[<>:"/\\|?*]', '_', ply_filename)
-                
-                save_path = os.path.join(seg_output_folder, ply_filename)
+                save_path = seg_output_folder + f"/{dpg.get_value('save_name')}.ply"
                 self.save_segmented_gaussians_as_ply(save_path)
-                print(f"PLY file saved as: {save_path}")
             except Exception as e:
                 print(f"Error: {e}")
                 with dpg.window(label="Tips"):
                     dpg.add_text('You should segment the 3D object before save it (click segment3d first).')
 
-        if self.save_all_objects_flag:
-            print("Saving all segmented objects as PLY...")
-            self.save_all_objects_flag = False
-            self.save_all_segmented_objects()
 
         self.render_buffer = None
         render_num = 0
