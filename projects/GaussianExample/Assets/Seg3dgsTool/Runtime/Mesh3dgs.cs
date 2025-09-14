@@ -78,6 +78,59 @@ namespace Seg3dgsTool.Runtime
              IsRunning = false;
          }
  
+        public async void RunExtractMesh()
+        {
+            if (IsRunning)
+            {
+                Debug.LogWarning("A process is already running.");
+                return;
+            }
+
+            string videoName = Path.GetFileNameWithoutExtension(m_ColmapPath);
+            string inputFolderWindows = Path.Combine(OutputPath.SourceDataPath, videoName);
+            string inputFolderWsl = ConvertWindowsToWslPath(inputFolderWindows);
+
+            if (string.IsNullOrEmpty(inputFolderWsl))
+            {
+                Debug.LogError("Input Folder Path is not set. Please check the inspector.");
+                return;
+            }
+
+            IsRunning = true;
+            CurrentStatus = "Sending Extract Mesh request to server...";
+
+            string jsonPayload = $"{{\"input_folder\": \"{inputFolderWsl}\"}}";
+
+            using (var request = new UnityWebRequest("http://localhost:5001/extract_mesh", "POST"))
+            {
+                byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonPayload);
+                request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+                request.downloadHandler = new DownloadHandlerBuffer();
+                request.SetRequestHeader("Content-Type", "application/json");
+
+                var asyncOp = request.SendWebRequest();
+
+                while (!asyncOp.isDone)
+                {
+                    CurrentStatus = $"Waiting for Extract Mesh server response... (Upload: {request.uploadProgress * 100:F0}%)";
+                    await Task.Yield();
+                }
+
+                if (request.result == UnityWebRequest.Result.Success)
+                {
+                    CurrentStatus = "Extract Mesh server responded successfully.";
+                    Debug.Log("Server Response: " + request.downloadHandler.text);
+                }
+                else
+                {
+                    CurrentStatus = $"Error: {request.error}";
+                    Debug.LogError($"Error sending request: {request.error}\nResponse: {request.downloadHandler.text}");
+                }
+            }
+
+            IsRunning = false;
+        }
+
          private string ConvertWindowsToWslPath(string windowsPath)
          {
              if (string.IsNullOrEmpty(windowsPath))

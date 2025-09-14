@@ -56,6 +56,12 @@ namespace Seg3dgsTool.Editor
                 {
                     tool.RunClipSam(true);
                 }
+                
+                EditorGUILayout.Space(10);
+                if (GUILayout.Button("Extract Mesh", GUILayout.Height(35)))
+                {
+                    tool.RunExtractMesh();
+                }
             }
 
             if (tool.IsRunning)
