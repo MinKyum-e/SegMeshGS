@@ -99,9 +99,9 @@ namespace Seg3dgsTool.Runtime
             IsRunning = true;
             CurrentStatus = "Sending Extract Mesh request to server...";
 
-            string jsonPayload = $"{{\"input_folder\": \"{inputFolderWsl}\"}}";
+            string jsonPayload = $"{{\"input_folder\": \"{inputFolderWsl}\", \"segment_targetname\": \"{m_Query}\"}}";
 
-            using (var request = new UnityWebRequest("http://localhost:5001/extract_mesh", "POST"))
+            using (var request = new UnityWebRequest("http://localhost:5001/sugar", "POST"))
             {
                 byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonPayload);
                 request.uploadHandler = new UploadHandlerRaw(bodyRaw);

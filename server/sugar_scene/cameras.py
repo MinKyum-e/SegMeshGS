@@ -14,7 +14,7 @@ from sugar_utils.general_utils import PILtoTorch
 
 def load_gs_cameras(source_path, gs_output_path, image_resolution=1, 
                     load_gt_images=True, max_img_size=1920, white_background=False,
-                    remove_indices=[]):
+                    remove_indices=[], segment_targetname = None):
     """Loads Gaussian Splatting camera parameters from a COLMAP reconstruction.
 
     Args:
@@ -29,7 +29,10 @@ def load_gs_cameras(source_path, gs_output_path, image_resolution=1,
     Returns:
         List of GSCameras: List of Gaussian Splatting cameras.
     """
-    image_dir = os.path.join(source_path, 'seg_images')
+    if segment_targetname is None:
+        image_dir = os.path.join(source_path,'images')
+    else:
+        image_dir = os.path.join(source_path, 'seg_images',segment_targetname)
     
     with open(gs_output_path + 'cameras.json') as f:
         unsorted_camera_transforms = json.load(f)

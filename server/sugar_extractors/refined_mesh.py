@@ -76,6 +76,7 @@ def extract_mesh_and_texture_from_refined_sugar(args):
     CONSOLE.print('Number of gaussians per surface triangle:', n_gaussians_per_surface_triangle)
     CONSOLE.print('Square size:', square_size)
     CONSOLE.print('Postprocess mesh:', postprocess_mesh)
+    CONSOLE.print("segment_targetname:", args.segment_targetname)
     CONSOLE.print('==================================================')
     
     # Set the GPU
@@ -95,6 +96,7 @@ def extract_mesh_and_texture_from_refined_sugar(args):
         load_gt_images=False,  # TODO: Check
         eval_split=use_train_test_split,
         eval_split_interval=n_skip_images_for_eval_split,
+        segment_targetname=args.segment_targetname,
         )
     CONSOLE.print("Vanilla 3DGS Loaded.")
     CONSOLE.print(f'{len(nerfmodel.training_cameras)} training images detected.')

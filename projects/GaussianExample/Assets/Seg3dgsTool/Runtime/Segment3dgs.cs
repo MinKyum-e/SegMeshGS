@@ -34,7 +34,7 @@ namespace Seg3dgsTool.Runtime
             CurrentStatus = "Idle";
         }
 
-        public async void RunWslScriptViaServer()
+        public async void RunVanilaViaServer()
         {
             if (IsRunning) return;
 
@@ -175,7 +175,7 @@ namespace Seg3dgsTool.Runtime
             IsRunning = false;
         }
 
-        public async void RunContrastiveTrainingViaServer()
+        public async void RunSAGATrainingViaServer()
         {
             if (IsRunning)
             {
@@ -194,7 +194,7 @@ namespace Seg3dgsTool.Runtime
 
             string jsonPayload = $"{{\"image_root\": \"{imageRootDirWsl}\", \"iterations\": {m_Iterations}, \"num_sampled_rays\": {m_NumSampledRays}}}";
 
-            using (var request = new UnityWebRequest("http://localhost:5001/train_contrastive", "POST"))
+            using (var request = new UnityWebRequest("http://localhost:5001/train_saga", "POST"))
             {
                 byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonPayload);
                 request.uploadHandler = new UploadHandlerRaw(bodyRaw);

@@ -83,6 +83,9 @@ if __name__ == "__main__":
     parser.add_argument('--gpu', type=int, default=0, help='Index of GPU device to use.')
     parser.add_argument('--white_background', type=str2bool, default=False, help='Use a white background instead of black.')
 
+ # segment sugar
+    parser.add_argument('--segment_targetname', type=str, default=None, 
+                        help="segment_targetname")
     # Parse arguments
     args = parser.parse_args()
     if args.low_poly:
@@ -157,5 +160,7 @@ if __name__ == "__main__":
             --refinement_time {args.refinement_time} \
             --eval {args.eval} \
             --gpu {args.gpu} \
-            --white_background {args.white_background}"
+            --white_background {args.white_background} \
+            --segment_targetname {args.segment_targetname} \
+            "
     )

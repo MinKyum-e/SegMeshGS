@@ -56,7 +56,7 @@ namespace Seg3dgsTool.Editor
                 EditorGUILayout.Space(2);
                 if (GUILayout.Button("Generate Vanilla 3dgs"))
                 {
-                    tool.RunWslScriptViaServer();
+                    tool.RunVanilaViaServer();
                 }
                 
                 EditorGUILayout.Space(20);
@@ -84,7 +84,7 @@ namespace Seg3dgsTool.Editor
                 EditorGUILayout.Space(2);
                 if (GUILayout.Button("Run Contrastive Training"))
                 {
-                    tool.RunContrastiveTrainingViaServer();
+                    tool.RunSAGATrainingViaServer();
                 }
                 
                 EditorGUILayout.Space(20);

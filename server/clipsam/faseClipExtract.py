@@ -48,7 +48,7 @@ def get_indices_of_values_above_threshold(values, threshold):
 def process_folder(parent_folder, query, threshold):
     image_folder = os.path.join(parent_folder, "images")
     mask_folder = os.path.join(parent_folder, "sam_masks")
-    output_folder = os.path.join(parent_folder, "seg_images")
+    output_folder = os.path.join(parent_folder, "seg_images", query)
     os.makedirs(output_folder, exist_ok=True)
 
     for filename in sorted(os.listdir(image_folder)):

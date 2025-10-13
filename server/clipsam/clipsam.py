@@ -116,6 +116,6 @@ if __name__ == "__main__":
     query =args.query
     
     parent_folder = os.path.abspath(os.path.join(input_folder, os.pardir))
-    output_folder = os.path.join(parent_folder, "seg_images")  # input 폴더와 같은 레벨
+    output_folder = os.path.join(parent_folder, "seg_images", query)  # input 폴더와 같은 레벨
     process_folder(input_folder, output_folder)
     print("All done!")

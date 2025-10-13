@@ -17,7 +17,7 @@ namespace Seg3dgsTool.Runtime
 
         private readonly Queue<string> m_LogQueue = new Queue<string>();
         private readonly object m_LogQueueLock = new object();
-
+        
         public async Task<int> ExtractFramesFromVideo()
         {
             if (string.IsNullOrEmpty(m_VideoPath) || !File.Exists(m_VideoPath))
@@ -169,9 +169,6 @@ namespace Seg3dgsTool.Runtime
             }
         }
 
-        
-
-
         public async Task<int> RunColmapConversion()
         {
             if (string.IsNullOrEmpty(m_VideoPath) || !File.Exists(m_VideoPath))
@@ -204,7 +201,7 @@ namespace Seg3dgsTool.Runtime
             return await RunCommandInShellAsync(command);
         }
 
-        public async void RunColmapFullPipeline()
+        public async Task<int> RunColmapFullPipeline()
         {
             Debug.Log("Starting Full COLMAP Pipeline...");
 
@@ -212,18 +209,18 @@ namespace Seg3dgsTool.Runtime
             if (ffmpegResult != 0)
             {
                 Debug.LogError("FFmpeg frame extraction failed, stopping pipeline.");
-                return;
+                return -1;
             }
 
             int colmapResult = await RunColmapConversion();
             if (colmapResult != 0)
             {
                 Debug.LogError("COLMAP conversion failed.");
-                return;
+                return -1;
             }
             Debug.Log("Full COLMAP Pipeline finished successfully.");
+            return 0;
         }
-        
         
     }
 }

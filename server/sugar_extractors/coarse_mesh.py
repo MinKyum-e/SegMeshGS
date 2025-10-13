@@ -122,6 +122,7 @@ def extract_mesh_from_coarse_sugar(args):
     CONSOLE.print("Use centers to extract mesh:", use_centers_to_extract_mesh)
     CONSOLE.print("Use marching cubes:", use_marching_cubes)
     CONSOLE.print("Use vanilla 3DGS:", use_vanilla_3dgs)
+    CONSOLE.print("segment_targetname:", args.segment_targetname)
     CONSOLE.print("--------------------")
     
     # Set the GPU
@@ -136,6 +137,7 @@ def extract_mesh_from_coarse_sugar(args):
         load_gt_images=False,
         eval_split=use_train_test_split,
         eval_split_interval=n_skip_images_for_eval_split,
+        segment_targetname=args.segment_targetname,
         )
     
     CONSOLE.print(f'{len(nerfmodel.training_cameras)} training images detected.')
