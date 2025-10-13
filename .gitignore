@@ -13,7 +13,7 @@
 /Temp/*
 /UserSettings/*
 /obj/*
-
+*.identifier
 /projects/**/Assets/GaussianAssets/*
 /projects/**/Assets/GaussianAssets.meta
 /projects/**/Assets/Models~/*

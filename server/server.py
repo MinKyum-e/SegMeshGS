@@ -3,15 +3,9 @@ import subprocess
 import os
 
 app = Flask(__name__)
-
-# 로그 파일 이름 지정
 LOG_FILENAME = "server_process_log.txt"
 
 def stream_process(command):
-    """
-    주어진 명령어를 실행하고, 그 출력을 클라이언트로 스트리밍하면서
-    서버 측에 조건부 로깅 및 콘솔 출력을 수행합니다.
-    """
     proc = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
@@ -21,17 +15,14 @@ def stream_process(command):
         bufsize=1
     )
 
-    previous_line_prefix = None  # 이전 줄의 앞 5글자를 저장할 변수
+    previous_line_prefix = None 
 
-    # 로그 파일을 추가 모드('a')로 엽니다.
     with open(LOG_FILENAME, 'a', encoding='utf-8') as log_file:
         log_file.write(f"\n--- New Process Started: {' '.join(command)} ---\n")
 
         for line in iter(proc.stdout.readline, ''):
-            # 1. 클라이언트로 원본 데이터를 스트리밍
             yield f"data: {line.strip()}\n\n"
 
-            # 2. 서버 측 로깅 및 콘솔 출력
             clean_line = line.strip()
             if not clean_line:
                 continue
@@ -39,11 +30,9 @@ def stream_process(command):
             current_line_prefix = clean_line[:5]
 
             if len(current_line_prefix) == 5 and current_line_prefix == previous_line_prefix:
-                # 이전 줄과 접두사가 같을 때 → 로그 파일에 기록
                 log_file.write(clean_line + '\n')
                 print(clean_line, end='\r', flush=True)
             else:
-                # 다를 때 → 로그 파일에는 기록하지 않고 콘솔 줄바꿈 출력
                 print(clean_line, end='\n', flush=True)
 
             previous_line_prefix = current_line_prefix
@@ -170,6 +159,81 @@ def saga_gui():
     ]
     print(f"Executing command: {' '.join(command_args)}")
     return Response(stream_process(command_args), mimetype='text/event-stream')
+
+
+
+
+@app.route('/clipsam/run_clipsam', methods=['POST'])
+def run_clipsam_old():
+    data = request.get_json()
+    if not data or 'input_folder' not in data or 'query' not in data:
+        return jsonify({"error": "Missing 'input_folder' or 'query' in request"}), 400
+
+    input_folder = data['input_folder']
+    query = data['query']
+
+    if not os.path.isdir(input_folder):
+        return jsonify({"error": f"Input folder not found: {input_folder}"}), 404
+
+    command_args = [
+        'python', 'clipsam/clipsam.py',
+        '--input_folder', input_folder,
+        '--query', query
+    ]
+
+    print(f"Executing command: {' '.join(command_args)}")
+    return Response(stream_process(command_args), mimetype='text/event-stream')
+
+
+@app.route('/clipsam/run_fast_clipsam', methods=['POST'])
+def run_clipsam_fast():
+    data = request.get_json()
+    if not data or 'input_folder' not in data or 'query' not in data:
+        return jsonify({"error": "Missing 'input_folder' or 'query' in request"}), 400
+
+    input_folder = data['input_folder']
+    query = data['query']
+
+    if not os.path.isdir(input_folder):
+        return jsonify({"error": f"Input folder not found: {input_folder}"}), 404
+
+    command_args = [
+        'python', 'clipsam/faseClipExtract.py',
+        '--input_folder', input_folder,
+        '--query', query
+    ]
+
+    print(f"Executing command: {' '.join(command_args)}")
+    return Response(stream_process(command_args), mimetype='text/event-stream')
+
+@app.route('/extract_mesh', methods=['POST'])
+def run_full_pipeline():
+    data = request.get_json()
+    if not data or 'input_folder' not in data:
+        return jsonify({"error": "Missing 'input_folder' in request"}), 400
+
+    input_folder = data['input_folder']
+
+    if not os.path.isdir(input_folder):
+        return jsonify({"error": f"Input folder not found: {input_folder}"}), 404
+
+    # output_dir은 input_folder 하위에 saga 폴더로 생성
+    gs_output_dir = os.path.join(input_folder, "saga")
+
+    # 명령어 구성
+    command_args = [
+        'python', 'train_full_pipeline.py',
+        '-s', input_folder,
+        '-r', 'dn_consistency',
+        '--high_poly', 'True',
+        '--export_obj', 'True',
+        '--gs_output_dir', gs_output_dir,
+        '--white_background', 'TRUE'
+    ]
+
+    print(f"Executing command: {' '.join(command_args)}")
+    return Response(stream_process(command_args), mimetype='text/event-stream')
+
 
 if __name__ == '__main__':
     # 서버 시작 시 기존 로그 파일이 있으면 삭제
