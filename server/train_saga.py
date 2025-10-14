@@ -339,7 +339,7 @@ def prepare_output_and_logger(args):
         print("Tensorboard not available: not logging progress")
     return tb_writer
 
-if __name__ == "__main__":
+def main():
     # Set up command line argument parser
     parser = ArgumentParser(description="Training script parameters")
     lp = ModelParams(parser, sentinel=True)
@@ -371,3 +371,6 @@ if __name__ == "__main__":
 
     # All done
     print("\nTraining complete.")
+
+if __name__ == "__main__":
+    main()

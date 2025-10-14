@@ -120,9 +120,9 @@ def get_scale():
     return Response(stream_process(command_args), mimetype='text/event-stream')
 
 
-@app.route('/train_contrastive', methods=['POST'])
+@app.route('/train_saga', methods=['POST'])
 def train_contrastive():
-    """ Contrastive Feature 학습 실행 (train_contrastive_feature.py) """
+    """ Contrastive Feature 학습 실행 (train_saga.py) """
     data = request.get_json()
     if not data or 'image_root' not in data:
         return jsonify({"error": "Missing 'image_root' in request"}), 400
@@ -135,7 +135,7 @@ def train_contrastive():
         return jsonify({"error": f"Image root not found: {image_root}"}), 404
 
     command_args = [
-        'python', 'train_contrastive_feature.py',
+        'python', 'train_saga.py',
         '-m', image_root + "/SAGA",
         '--iterations', iterations,
         '--num_sampled_rays', num_sampled_rays

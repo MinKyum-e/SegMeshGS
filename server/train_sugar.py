@@ -1,6 +1,7 @@
 import os
 import argparse
 from sugar_utils.general_utils import str2bool
+import sys
 
 
 class AttrDict(dict):
@@ -9,8 +10,8 @@ class AttrDict(dict):
             self.__dict__ = self
 
 
-if __name__ == "__main__":
-    # ----- Parser -----
+def main(argv = None):
+     # ----- Parser -----
     parser = argparse.ArgumentParser(description='Script to optimize a full SuGaR model.')
     
     # Data and vanilla 3DGS checkpoint
@@ -87,7 +88,9 @@ if __name__ == "__main__":
     parser.add_argument('--segment_targetname', type=str, default=None, 
                         help="segment_targetname")
     # Parse arguments
-    args = parser.parse_args()
+    if argv is None:
+        argv = sys.argv[1:]
+    args = parser.parse_args(argv)
     if args.low_poly:
         args.n_vertices_in_mesh = 200_000
         args.gaussians_per_triangle = 6
@@ -164,3 +167,6 @@ if __name__ == "__main__":
             --segment_targetname {args.segment_targetname} \
             "
     )
+
+if __name__ == "__main__":
+   main(sys.argv[1:])

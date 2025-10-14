@@ -15,6 +15,7 @@ from PIL import Image
 import colorsys
 import cv2
 from sklearn.decomposition import PCA
+import sys
 
 # from scene.gaussian_model import GaussianModel
 from scene import Scene, GaussianModel, FeatureGaussianModel
@@ -185,7 +186,7 @@ class OrbitCamera:
 
 
 class GaussianSplattingGUI:
-    def __init__(self, opt, gaussian_model:GaussianModel, feature_gaussian_model:FeatureGaussianModel, scale_gate: torch.nn.modules.container.Sequential) -> None:
+    def __init__(self, opt, gaussian_model:GaussianModel, feature_gaussian_model:FeatureGaussianModel, scale_gate: torch.nn.modules.container.Sequential, args) -> None:
         self.opt = opt
 
         self.width = opt.width
@@ -263,6 +264,9 @@ class GaussianSplattingGUI:
         self.save_flag = False
         
         self.save_ply_flag = False
+        self.last_save_name = None
+        self.args = args
+        
     def __del__(self):
         dpg.destroy_context()
 
@@ -361,6 +365,8 @@ class GaussianSplattingGUI:
             print(f"  - Points: {xyz.shape}")
             print(f"  - Features DC: {features_dc.shape}")
             print(f"  - Features Rest: {features_rest.shape}")
+            
+            self.last_save_name = dpg.get_value('save_name')
             return True
             
         except Exception as e:
@@ -835,7 +841,7 @@ class GaussianSplattingGUI:
         if self.save_ply_flag:
             print("Saving segmented gaussians as PLY...")
             self.save_ply_flag = False
-            seg_output_folder = args.model_path + "/segmentation_objs" 
+            seg_output_folder = self.args.model_path + "/segmentation_objs" 
             try:
                 os.makedirs(seg_output_folder, exist_ok=True)
                 save_path = seg_output_folder + f"/{dpg.get_value('save_name')}.ply"
@@ -874,14 +880,16 @@ class GaussianSplattingGUI:
         dpg.set_value("_texture", self.render_buffer)
 
 
-if __name__ == "__main__":
+def main(argv=None):
     parser = ArgumentParser(description="GUI option")
 
     parser.add_argument('-m', '--model_path', type=str, default="./output/figurines")
     parser.add_argument('-f', '--feature_iteration', type=int, default=10000)
     parser.add_argument('-s', '--scene_iteration', type=int, default=30000)
 
-    args = parser.parse_args()
+    if argv is None:
+        argv = sys.argv[1:]
+    args = parser.parse_args(argv)
 
     opt = CONFIG()
 
@@ -899,6 +907,11 @@ if __name__ == "__main__":
         torch.nn.Linear(1, opt.FEATURE_DIM, bias=True),
         torch.nn.Sigmoid()
     ).cuda()
-    gui = GaussianSplattingGUI(opt, gs_model, feat_gs_model, scale_gate)
+    gui = GaussianSplattingGUI(opt, gs_model, feat_gs_model, scale_gate, args)
 
     gui.render()
+
+    return gui.last_save_name
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
