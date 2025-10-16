@@ -8,10 +8,9 @@ using UnityEngine;
 
 namespace SegNeshGS.Editor
 {
-    [EditorToolContext("GaussianSplats", typeof(GaussianSplatRenderer)), Icon(k_IconPath)]
+    [EditorToolContext("GaussianSplats", typeof(GaussianSplatRenderer))]
     class GaussianToolContext : EditorToolContext
     {
-        const string k_IconPath = "Packages/com.kmk.unityGSSeg/Editor/Icons/GaussianContext.png";
 
         Vector2 m_MouseStartDragPos;
 
