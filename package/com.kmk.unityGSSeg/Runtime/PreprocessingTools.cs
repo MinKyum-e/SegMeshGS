@@ -187,16 +187,9 @@ namespace SegNeshGS.Runtime
                 return -1;
             }
 
-            string pythonScriptsDir =
-                Path.GetFullPath(Path.Combine(Application.dataPath, "Seg3dgsTool", "PythonScripts"));
 
-            if (!File.Exists(Path.Combine(pythonScriptsDir, "convert.py")))
-            {
-                Debug.LogError($"Python script 'convert.py' not found in '{pythonScriptsDir}'.");
-                return -1;
-            }
 
-            string command = $"cd /d \"{pythonScriptsDir}\" && python convert.py -s \"{colmapProjectDir}\"";
+            string command = $"python convert.py -s \"{colmapProjectDir}\"";
 
             return await RunCommandInShellAsync(command);
         }
