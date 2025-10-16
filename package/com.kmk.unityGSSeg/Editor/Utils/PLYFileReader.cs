@@ -7,7 +7,7 @@ using System.Linq;
 using System.Text;
 using Unity.Collections;
 
-namespace GaussianSplatting.Editor.Utils
+namespace SegNeshGS.Editor.Utils
 {
     public static class PLYFileReader
     {

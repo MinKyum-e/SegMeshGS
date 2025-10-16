@@ -13,7 +13,7 @@ using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 using UnityEngine.XR;
 
-namespace GaussianSplatting.Runtime
+namespace SegNeshGS.Runtime
 {
     class GaussianSplatRenderSystem // 렌더러 관리 시스템
     {

@@ -14,17 +14,17 @@
 /UserSettings/*
 /obj/*
 *.identifier
-/projects/**/Assets/GaussianAssets/*
-/projects/**/Assets/GaussianAssets.meta
-/projects/**/Assets/Models~/*
-/projects/**/Library/*
-/projects/**/Logs/*
-/projects/**/Temp/*
-/projects/**/UserSettings/*
-/projects/**/obj/*
+/UnityProject/**/Assets/GaussianAssets/*
+/UnityProject/**/Assets/GaussianAssets.meta
+/UnityProject/**/Assets/Models~/*
+/UnityProject/**/Library/*
+/UnityProject/**/Logs/*
+/UnityProject/**/Temp/*
+/UnityProject/**/UserSettings/*
+/UnityProject/**/obj/*
 *.sln.DotSettings.user
-
-/projects/**/data
+/test_video
+/UnityProject/**/data
 
 # ===============================
 # Unity generated files

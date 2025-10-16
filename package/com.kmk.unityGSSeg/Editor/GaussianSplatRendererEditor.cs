@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
-using GaussianSplatting.Runtime;
+using SegNeshGS.Runtime;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using UnityEditor;
@@ -13,12 +13,13 @@ using UnityEditor.EditorTools;
 using UnityEditor.PackageManager;
 using UnityEngine;
 using UnityEngine.Networking;
-using GaussianSplatRenderer = GaussianSplatting.Runtime.GaussianSplatRenderer;
+using GaussianSplatRenderer = SegNeshGS.Runtime.GaussianSplatRenderer;
 using PackageInfo = UnityEditor.PackageManager.PackageInfo;
+using Runtime_GaussianSplatRenderer = SegNeshGS.Runtime.GaussianSplatRenderer;
 
-namespace GaussianSplatting.Editor
+namespace SegNeshGS.Editor
 {
-    [CustomEditor(typeof(GaussianSplatRenderer))]
+    [CustomEditor(typeof(Runtime_GaussianSplatRenderer))]
     [CanEditMultipleObjects]
     public class GaussianSplatRendererEditor : UnityEditor.Editor
     {
@@ -105,7 +106,7 @@ namespace GaussianSplatting.Editor
 
         public override void OnInspectorGUI()
         {
-            var gs = target as GaussianSplatRenderer;
+            var gs = target as Runtime_GaussianSplatRenderer;
             if (!gs)
                 return;
 
@@ -169,7 +170,7 @@ namespace GaussianSplatting.Editor
             serializedObject.ApplyModifiedProperties();
         }
 
-        void EditCameras(GaussianSplatRenderer gs)
+        void EditCameras(Runtime_GaussianSplatRenderer gs)
         {
             var asset = gs.asset;
             var cameras = asset.cameras;
@@ -215,7 +216,7 @@ namespace GaussianSplatting.Editor
             }
         }
 
-        void EditSegmentationGUI(GaussianSplatRenderer gs)
+        void EditSegmentationGUI(Runtime_GaussianSplatRenderer gs)
         {
             DrawSeparator();
             GUILayout.Label("Tiled-Based Culling / Segmentation", EditorStyles.boldLabel);
@@ -509,7 +510,7 @@ namespace GaussianSplatting.Editor
                 return;
             }
 
-            var targetGs = (GaussianSplatRenderer) target;
+            var targetGs = (Runtime_GaussianSplatRenderer) target;
             if (!targetGs || !targetGs.HasValidAsset || !targetGs.isActiveAndEnabled)
             {
                 EditorGUILayout.HelpBox($"Can't merge into {target.name} (no asset or disable)", MessageType.Warning);
@@ -533,7 +534,7 @@ namespace GaussianSplatting.Editor
             totalSplats = 0;
             foreach (var obj in targets)
             {
-                var gs = obj as GaussianSplatRenderer;
+                var gs = obj as Runtime_GaussianSplatRenderer;
                 if (!gs || !gs.HasValidAsset || !gs.isActiveAndEnabled)
                     continue;
                 ++totalObjects;
@@ -546,13 +547,13 @@ namespace GaussianSplatting.Editor
             CountTargetSplats(out var totalSplats, out _);
             if (totalSplats > GaussianSplatAsset.kMaxSplats)
                 return;
-            var targetGs = (GaussianSplatRenderer) target;
+            var targetGs = (Runtime_GaussianSplatRenderer) target;
 
             int copyDstOffset = targetGs.splatCount;
             targetGs.EditSetSplatCount(totalSplats);
             foreach (var obj in targets)
             {
-                var gs = obj as GaussianSplatRenderer;
+                var gs = obj as Runtime_GaussianSplatRenderer;
                 if (!gs || !gs.HasValidAsset || !gs.isActiveAndEnabled)
                     continue;
                 if (gs == targetGs)
@@ -592,7 +593,7 @@ namespace GaussianSplatting.Editor
             return null;
         }
         
-        static void ShowOriginalImages(GaussianSplatRenderer gs)
+        static void ShowOriginalImages(Runtime_GaussianSplatRenderer gs)
         {
             var asset = gs.asset;
             if (asset == null || asset.cameras == null || asset.cameras.Length == 0)
@@ -664,7 +665,7 @@ namespace GaussianSplatting.Editor
             EditorUtility.ClearProgressBar();
         }
 
-        static void ShowSegmentedImages(GaussianSplatRenderer gs)
+        static void ShowSegmentedImages(Runtime_GaussianSplatRenderer gs)
         {
             var asset = gs.asset;
             if (asset == null || asset.cameras == null || asset.cameras.Length == 0)
@@ -745,7 +746,7 @@ namespace GaussianSplatting.Editor
             public string error;
         }
 
-        static async void SegmentAndColorizeWithSAM(GaussianSplatRenderer gs)
+        static async void SegmentAndColorizeWithSAM(Runtime_GaussianSplatRenderer gs)
         {
             var asset = gs.asset;
             if (asset == null || asset.cameras == null || asset.cameras.Length == 0)
@@ -831,7 +832,7 @@ namespace GaussianSplatting.Editor
             }
         }
 
-        void EditGUI(GaussianSplatRenderer gs)
+        void EditGUI(Runtime_GaussianSplatRenderer gs)
         {
             ++s_EditStatsUpdateCounter;
 
@@ -958,7 +959,7 @@ namespace GaussianSplatting.Editor
 
         Bounds OnGetFrameBounds()
         {
-            var gs = target as GaussianSplatRenderer;
+            var gs = target as Runtime_GaussianSplatRenderer;
             if (!gs || !gs.HasValidRenderSetup)
                 return new Bounds(Vector3.zero, Vector3.one);
             Bounds bounds = default;
@@ -988,7 +989,7 @@ namespace GaussianSplatting.Editor
             return new Bounds { center = center, extents = ext };
         }
 
-        static unsafe void ExportPlyFile(GaussianSplatRenderer gs, bool bakeTransform)
+        static unsafe void ExportPlyFile(Runtime_GaussianSplatRenderer gs, bool bakeTransform)
         {
             var path = EditorUtility.SaveFilePanel(
                 "Export Gaussian Splat PLY file", "", $"{gs.asset.name}-edit.ply", "ply");

@@ -84,6 +84,7 @@ class GaussianSplattingWrapper:
                  background=[0., 0., 0.],
                  white_background=False,
                  remove_camera_indices=[],
+                 segment_targetname = None,
                  ) -> None:
         """Initialize the Gaussian Splatting model wrapper.
         
@@ -135,6 +136,7 @@ class GaussianSplattingWrapper:
             load_gt_images=load_gt_images,
             white_background=white_background,
             remove_indices=remove_camera_indices,
+            segment_targetname= segment_targetname,
             )
         
         if eval_split:
@@ -159,13 +161,22 @@ class GaussianSplattingWrapper:
         self.training_cameras = CamerasWrapper(self.cam_list)
             
         self.gaussians = GaussianModel(self.model_params.sh_degree)
-        self.gaussians.load_ply(
-            os.path.join(
-                output_path,
-                "segmentation_objs",
-                "precomputed_mask.ply"
+        if segment_targetname is None :
+             self.gaussians.load_ply(
+                os.path.join(
+                    output_path,
+                    "segmentation_objs",
+                    "precomputed_mask.ply"
+                    )
                 )
-            )
+        else:    
+            self.gaussians.load_ply(
+                os.path.join(
+                    output_path,
+                    "segmentation_objs",
+                    f"{segment_targetname}.ply"
+                    )
+                )
         
         self.background = torch.tensor(background, device='cuda', dtype=torch.float32)
 

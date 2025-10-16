@@ -120,9 +120,9 @@ def get_scale():
     return Response(stream_process(command_args), mimetype='text/event-stream')
 
 
-@app.route('/train_contrastive', methods=['POST'])
+@app.route('/train_saga', methods=['POST'])
 def train_contrastive():
-    """ Contrastive Feature 학습 실행 (train_contrastive_feature.py) """
+    """ Contrastive Feature 학습 실행 (train_saga.py) """
     data = request.get_json()
     if not data or 'image_root' not in data:
         return jsonify({"error": "Missing 'image_root' in request"}), 400
@@ -135,7 +135,7 @@ def train_contrastive():
         return jsonify({"error": f"Image root not found: {image_root}"}), 404
 
     command_args = [
-        'python', 'train_contrastive_feature.py',
+        'python', 'train_saga.py',
         '-m', image_root + "/SAGA",
         '--iterations', iterations,
         '--num_sampled_rays', num_sampled_rays
@@ -206,10 +206,41 @@ def run_clipsam_fast():
     print(f"Executing command: {' '.join(command_args)}")
     return Response(stream_process(command_args), mimetype='text/event-stream')
 
-@app.route('/extract_mesh', methods=['POST'])
-def run_full_pipeline():
+@app.route('/sugar', methods=['POST'])
+def run_sugar_pipeline():
     data = request.get_json()
-    if not data or 'input_folder' not in data:
+    if not data or 'input_folder' not in data or 'segment_targetname' not in data:
+        return jsonify({"error": "Missing 'input_folder' or 'segment_targetname' in request"}), 400
+
+    input_folder = data['input_folder']
+    segment_targetname = data['segment_targetname']
+
+    if not os.path.isdir(input_folder):
+        return jsonify({"error": f"Input folder not found: {input_folder}"}), 404
+
+
+    # 체크포인트
+    gs_output_dir = os.path.join(input_folder, "saga")
+
+    # 명령어 구성
+    command_args = [
+        'python', 'train_sugar.py',
+        '-s', input_folder,
+        '-r', 'dn_consistency',
+        '--high_poly', 'True',
+        '--export_obj', 'True',
+        '--gs_output_dir', gs_output_dir,
+        '--white_background', 'TRUE',
+        '--segment_targetname', segment_targetname, 
+    ]
+
+    print(f"Executing command: {' '.join(command_args)}")
+    return Response(stream_process(command_args), mimetype='text/event-stream')
+
+@app.route('/segmeshgs', methods=['POST'])
+def run_SegMeshGS_pipeline():
+    data = request.get_json()
+    if not data or 'input_folder' not in data :
         return jsonify({"error": "Missing 'input_folder' in request"}), 400
 
     input_folder = data['input_folder']
@@ -217,18 +248,11 @@ def run_full_pipeline():
     if not os.path.isdir(input_folder):
         return jsonify({"error": f"Input folder not found: {input_folder}"}), 404
 
-    # output_dir은 input_folder 하위에 saga 폴더로 생성
-    gs_output_dir = os.path.join(input_folder, "saga")
 
     # 명령어 구성
     command_args = [
-        'python', 'train_full_pipeline.py',
-        '-s', input_folder,
-        '-r', 'dn_consistency',
-        '--high_poly', 'True',
-        '--export_obj', 'True',
-        '--gs_output_dir', gs_output_dir,
-        '--white_background', 'TRUE'
+        'python', 'train_SegMeshGS.py',
+        '--colmap_folder', input_folder
     ]
 
     print(f"Executing command: {' '.join(command_args)}")

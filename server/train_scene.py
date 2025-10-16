@@ -202,8 +202,9 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
             tb_writer.add_scalar('total_points', scene.gaussians.get_xyz.shape[0], iteration)
         torch.cuda.empty_cache()
 
-if __name__ == "__main__":
-    # Set up command line argument parser
+
+def main(argv = None):
+     # Set up command line argument parser
     parser = ArgumentParser(description="Training script parameters")
     lp = ModelParams(parser)
     op = OptimizationParams(parser)
@@ -217,7 +218,7 @@ if __name__ == "__main__":
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
-    args = parser.parse_args(sys.argv[1:])
+    args = parser.parse_args(argv)
     args.save_iterations.append(args.iterations)
     
     print("Optimizing " + args.model_path)
@@ -232,3 +233,7 @@ if __name__ == "__main__":
 
     # All done
     print("\nTraining complete.")
+    
+    
+if __name__ == "__main__":
+    main(sys.argv[1:])

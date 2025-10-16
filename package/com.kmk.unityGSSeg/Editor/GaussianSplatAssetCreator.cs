@@ -3,8 +3,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using GaussianSplatting.Editor.Utils;
-using GaussianSplatting.Runtime;
+using SegNeshGS.Editor.Utils;
+using SegNeshGS.Runtime;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
@@ -14,7 +14,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 
-namespace GaussianSplatting.Editor
+namespace SegNeshGS.Editor
 {
     [BurstCompile]
     public class GaussianSplatAssetCreator : EditorWindow

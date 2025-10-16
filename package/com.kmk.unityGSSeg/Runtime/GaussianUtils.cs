@@ -2,7 +2,7 @@
 
 using Unity.Mathematics;
 
-namespace GaussianSplatting.Runtime
+namespace SegNeshGS.Runtime
 {
     public static class GaussianUtils
     {

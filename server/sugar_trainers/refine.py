@@ -301,6 +301,7 @@ def refined_training(args):
     CONSOLE.print("Use eval split:", use_eval_split)
     CONSOLE.print("Use white background:", use_white_background)
     CONSOLE.print("Export ply at the end:", export_ply_at_the_end)
+    CONSOLE.print("segment_targetname:", args.segment_targetname)
     CONSOLE.print("----------------------------")
     
     # Setup device
@@ -328,6 +329,7 @@ def refined_training(args):
         eval_split=use_eval_split,
         eval_split_interval=n_skip_images_for_eval_split,
         white_background=use_white_background,
+        segment_targetname=args.segment_targetname,
         )
 
     CONSOLE.print(f'{len(nerfmodel.training_cameras)} training images detected.')
