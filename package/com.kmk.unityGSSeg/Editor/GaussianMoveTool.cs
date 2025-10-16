@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-using GaussianSplatting.Runtime;
+using SegNeshGS.Runtime;
 using UnityEditor;
 using UnityEditor.EditorTools;
 using UnityEngine;
 
-namespace GaussianSplatting.Editor
+namespace SegNeshGS.Editor
 {
     [EditorTool("Gaussian Move Tool", typeof(GaussianSplatRenderer), typeof(GaussianToolContext))]
     class GaussianMoveTool : GaussianTool

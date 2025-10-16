@@ -3,7 +3,7 @@
 using UnityEditor;
 using UnityEngine;
 
-namespace GaussianSplatting.Editor.Utils
+namespace SegNeshGS.Editor.Utils
 {
     public class CaptureScreenshot : MonoBehaviour
     {

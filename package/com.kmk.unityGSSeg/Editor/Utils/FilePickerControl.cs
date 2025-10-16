@@ -8,7 +8,7 @@ using UnityEditor;
 using UnityEditor.Experimental;
 using UnityEngine;
 
-namespace GaussianSplatting.Editor.Utils
+namespace SegNeshGS.Editor.Utils
 {
     public class FilePickerControl
     {

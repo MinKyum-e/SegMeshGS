@@ -4,7 +4,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
-namespace GaussianSplatting.Runtime
+namespace SegNeshGS.Runtime
 {
     public class GaussianCutout : MonoBehaviour
     {

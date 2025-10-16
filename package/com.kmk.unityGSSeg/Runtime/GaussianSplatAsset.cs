@@ -6,7 +6,7 @@ using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 
-namespace GaussianSplatting.Runtime
+namespace SegNeshGS.Runtime
 {
     public class GaussianSplatAsset : ScriptableObject
     {
