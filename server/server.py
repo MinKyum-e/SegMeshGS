@@ -207,7 +207,7 @@ def run_clipsam_fast():
     return Response(stream_process(command_args), mimetype='text/event-stream')
 
 @app.route('/sugar', methods=['POST'])
-def run_full_pipeline():
+def run_sugar_pipeline():
     data = request.get_json()
     if not data or 'input_folder' not in data or 'segment_targetname' not in data:
         return jsonify({"error": "Missing 'input_folder' or 'segment_targetname' in request"}), 400
@@ -232,6 +232,27 @@ def run_full_pipeline():
         '--gs_output_dir', gs_output_dir,
         '--white_background', 'TRUE',
         '--segment_targetname', segment_targetname, 
+    ]
+
+    print(f"Executing command: {' '.join(command_args)}")
+    return Response(stream_process(command_args), mimetype='text/event-stream')
+
+@app.route('/segmeshgs', methods=['POST'])
+def run_SegMeshGS_pipeline():
+    data = request.get_json()
+    if not data or 'input_folder' not in data :
+        return jsonify({"error": "Missing 'input_folder' in request"}), 400
+
+    input_folder = data['input_folder']
+
+    if not os.path.isdir(input_folder):
+        return jsonify({"error": f"Input folder not found: {input_folder}"}), 404
+
+
+    # 명령어 구성
+    command_args = [
+        'python', 'train_SegMeshGS.py',
+        '--colmap_folder', input_folder
     ]
 
     print(f"Executing command: {' '.join(command_args)}")

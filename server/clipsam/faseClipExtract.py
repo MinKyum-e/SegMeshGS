@@ -69,10 +69,10 @@ def process_folder(parent_folder, query, threshold):
         image_cv = cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB)
         image_pil = Image.fromarray(image_cv).convert("RGB")
 
-        masks = torch.load(mask_path, map_location="cpu") 
+        masks = torch.load(mask_path, map_location="cpu")
         if isinstance(masks, torch.Tensor):
             if masks.dim() == 3:
-                masks = [m for m in masks] 
+                masks = [m for m in masks]
             elif masks.dim() == 2:
                 masks = [masks]
             else:
@@ -86,9 +86,14 @@ def process_folder(parent_folder, query, threshold):
         scores = retriev(cropped_boxes, query)
         indices = get_indices_of_values_above_threshold(scores, threshold)
 
+        # --- MODIFIED SECTION START ---
         if not indices:
-            print("No matching masks found. Skipping.")
-            continue
+            print("No matching masks found. Saving original image.")
+            output_path = os.path.join(output_folder, os.path.splitext(filename)[0] + ".png")
+            image_pil.save(output_path)
+            print(f"Saved original: {output_path}")
+            continue # 다음 이미지로 넘어감
+        # --- MODIFIED SECTION END ---
 
         w, h = image_pil.size
         combined_mask = Image.new("L", (w, h), 0)
@@ -110,7 +115,7 @@ def main(argv = None):
     parser = argparse.ArgumentParser(description="CLIP + precomputed SAM masks")
     parser.add_argument("--input_folder", type=str, required=True, help="Parent folder containing images/ and sam_masks/")
     parser.add_argument("--query", type=str, required=True, help="Text query for CLIP")
-    parser.add_argument("--threshold", type=float, default=0.05, help="Score threshold for mask selection")
+    parser.add_argument("--threshold", type=float, default=0.04, help="Score threshold for mask selection")
     if argv is None:
         argv = sys.argv[1:]
     args = parser.parse_args(argv)

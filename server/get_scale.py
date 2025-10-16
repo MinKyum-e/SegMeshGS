@@ -11,6 +11,7 @@ import importlib
 from arguments import ModelParams, PipelineParams
 from scene import Scene, GaussianModel, FeatureGaussianModel
 import gaussian_renderer
+import sys
 
 importlib.reload(gaussian_renderer)
 
@@ -19,8 +20,11 @@ DATA_ROOT = './data/nerf_llff_data_for_3dgs/'
 ALLOW_PRINCIPLE_POINT_SHIFT = False
 
 
-def get_combined_args(parser: ArgumentParser):
-    args_cmdline = parser.parse_args()
+def get_combined_args(parser: ArgumentParser, argv = None):
+    
+    if argv is None:
+        argv = sys.argv[1:]
+    args_cmdline = parser.parse_args(argv)
 
     cfgfile_string = "Namespace()"
     target_cfg_file = "cfg_args"
@@ -66,10 +70,7 @@ def main(argv=None):
     parser.add_argument("--precomputed_mask", default=None, type=str)
     parser.add_argument("--image_root", default='/datasets/nerf_data/360_v2/garden/', type=str)
 
-    if argv is None:
-        args = get_combined_args(parser)
-    else:
-        args = get_combined_args(parser.parse_args(argv))
+    args = get_combined_args(parser, argv)
 
     dataset = model.extract(args)
     dataset.need_features = False
@@ -152,7 +153,7 @@ def main(argv=None):
 
         torch.save(scale, os.path.join(OUTPUT_DIR, view.image_name + '.pt'))
 
-    return OUTPUT_DIR  # ✅ 모듈로 쓸 때 반환값도 받을 수 있음
+    return OUTPUT_DIR  #
 
 
 if __name__ == "__main__":

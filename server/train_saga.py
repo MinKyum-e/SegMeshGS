@@ -339,7 +339,7 @@ def prepare_output_and_logger(args):
         print("Tensorboard not available: not logging progress")
     return tb_writer
 
-def main():
+def main(argv = None):
     # Set up command line argument parser
     parser = ArgumentParser(description="Training script parameters")
     lp = ModelParams(parser, sentinel=True)
@@ -358,7 +358,7 @@ def main():
     parser.add_argument("--iteration", default=-1, type=int)
     
     # args = parser.parse_args(sys.argv[1:])
-    args = get_combined_args(parser, target_cfg_file = 'cfg_args')
+    args = get_combined_args(parser, target_cfg_file = 'cfg_args', argv=argv)
     args.save_iterations.append(args.iterations)
     
     print("Optimizing " + args.model_path)

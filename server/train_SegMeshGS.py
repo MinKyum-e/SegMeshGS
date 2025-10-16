@@ -65,15 +65,15 @@ def SegMeshGS_full_pipeline(colmap_folder, downsample=2, iterations=10000, num_s
     ])
     safe_run("SAGA::Train", train_saga.main, [
         "-m", colmap_folder + "/saga",
-        "--iterations" , iterations,
-        '--num_sampled_rays', num_sampled_rays
+        "--iterations" , str(iterations),
+        '--num_sampled_rays', str(num_sampled_rays)
     ])
     
     segment_file_name = safe_run("SAGA::GUI", saga_gui.main, [
         "-m", colmap_folder + "/saga"
     ])
     
-    print(segment_file_name)
+  
     
     # ================      SuGaR      ===================
     safe_run("SuGaR::faseClipExtract", clipsam.faseClipExtract.main, [

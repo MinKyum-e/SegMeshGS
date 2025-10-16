@@ -112,10 +112,11 @@ class OptimizationParams(ParamGroup):
         self.rfn = 1.
         super().__init__(parser, "Optimization Parameters")
 
-def get_combined_args(parser : ArgumentParser, target_cfg_file = None):
-    cmdlne_string = sys.argv[1:]
+def get_combined_args(parser : ArgumentParser, target_cfg_file = None, argv = None):
     cfgfile_string = "Namespace()"
-    args_cmdline = parser.parse_args(cmdlne_string)
+    if argv is None:
+        argv = sys.argv[1:]
+    args_cmdline = parser.parse_args(argv)
     
     if target_cfg_file is None:
         if args_cmdline.target == 'seg':
