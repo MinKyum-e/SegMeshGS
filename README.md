@@ -1,4 +1,4 @@
-# UnitySegMeshGS: Segmentation for 3D Gaussian Splatting in Unity
+# SegMeshGS: Segmentation & Meshing pipeline for 3D Gaussian Splatting
 - **Unity Version:** 2022.3.21f1
 
 ---
