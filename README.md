@@ -1,4 +1,4 @@
-# SegMeshGS: A Segmentation & Meshing Pipeline for 3D Gaussian Splatting
+# SegMeshGS : 3D Gaussian Splatting-based Object Segmentation and Mesh Extraction Pipeline
 
 [![Unity Version](https://img.shields.io/badge/Unity-2022.3.21f1-blue.svg)](https://unity.com/)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
