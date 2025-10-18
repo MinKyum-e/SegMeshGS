@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+using Seg3dgsTool.Runtime;
 using UnityEditor;
 using UnityEngine;
 using SegNeshGS.Runtime;
