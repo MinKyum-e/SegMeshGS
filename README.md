@@ -91,11 +91,6 @@ Recommended environment for stable execution:
 
 Before running any scripts, make sure to install all dependencies:
 
-```bash
-# Make sure you have installed requirements
-pip install -r requirements.txt
-```
-
 ---
 
 ## 🛠️ Command-Line Usage
