@@ -8,6 +8,26 @@
 
 The entire workflow is integrated into the Unity editor through the **UnitySegMeshGS** module, providing a seamless and user-friendly experience for content creators, artists, and designers to bring real-world objects into their projects without leaving their primary work environment.
 
+<table>
+  <tr>
+    <td align="center">
+      <img width="250" alt="3DGS Scene" src="https://github.com/user-attachments/assets/eaf09efb-1330-49b7-981f-3b8e083686bc">
+      <br>
+      <b>3DGS Scene</b>
+    </td>
+    <td align="center">
+      <img width="250" alt="Segmented 3DGS Scene" src="https://github.com/user-attachments/assets/8b2ae381-a28a-4abb-a43d-a023a719cef8">
+      <br>
+      <b>Segmented 3DGS Scene</b>
+    </td>
+    <td align="center">
+      <img width="250" alt="Mesh" src="https://github.com/user-attachments/assets/6436c05c-057c-4d22-9c5d-f4ebd7b2670d">
+      <br>
+      <b>Mesh</b>
+    </td>
+  </tr>
+</table>
+
 ---
 
 ## 🚀 Key Features
@@ -23,7 +43,7 @@ The entire workflow is integrated into the Unity editor through the **UnitySegMe
 ## 🛠️ Pipeline Workflow
 
 The SegMeshGS pipeline is composed of four main stages, designed to run sequentially with minimal user intervention.
-
+<img width="340" height="304" alt="Image" src="https://github.com/user-attachments/assets/c16a92c8-ad6d-4f2b-a449-780a4403347d" />
 <details>
   <summary><b>Click to Expand for Detailed Workflow</b></summary>
 
@@ -59,22 +79,173 @@ The SegMeshGS pipeline is composed of four main stages, designed to run sequenti
 
 ---
 
-## 🎮 Unity Integration: `UnitySegMeshGS`
+## ⚙️ Environment Setup
 
-To make this powerful pipeline accessible to artists and developers, we developed **UnitySegMeshGS**, an editor extension that brings the entire workflow inside Unity.
+Recommended environment for stable execution:
 
-* **Integrated 3DGS Viewer**: Built upon the `UnityGaussianSplatting` open-source project, our viewer renders `.ply` files directly in the Unity scene. It fully supports Unity's depth buffer, allowing 3DGS assets to correctly intersect and occlude standard mesh-based GameObjects.
-* **GUI-Driven Pipeline**: No more command lines. The entire SegMeshGS pipeline can be executed through intuitive components and buttons within the Unity Inspector.
-* **Asynchronous Execution**: All heavy computational tasks are offloaded to a background Python process running in WSL2. This keeps the Unity editor responsive, allowing you to continue working while the pipeline runs.
-* **Automatic Asset Importer**: A "Show 3DGS" utility provides a one-click solution to import any `.ply` file, automatically converting it into a renderable Unity asset and adding it to the current scene.
+- **Operating System:** Windows 11  
+- **Subsystem:** WSL-Ubuntu 20.04  
+- **GPU:** NVIDIA RTX 4070 Ti  
+- **CUDA Version:** 11.8  
+- **Python Version:** 3.9+
+
+Before running any scripts, make sure to install all dependencies:
+
+```bash
+# Make sure you have installed requirements
+pip install -r requirements.txt
+```
+
+---
+
+## 🛠️ Command-Line Usage
+
+This section describes how to run the pipeline directly from your terminal (e.g., in a WSL2 environment).
+
+### **Step 1: Prerequisite – Run COLMAP**
+
+Before using the pipeline, you must first process your source images with **COLMAP** to generate camera poses and a sparse point cloud.  
+The pipeline expects a standard COLMAP output directory structure.
+
+---
+
+### **Step 2: Run the Automated SegMeshGS Pipeline**
+
+This is the simplest and recommended way to use the project.  
+The `train_SegMeshGS.py` script automates all steps from scene generation to final meshing.
+
+1. **Execute the script**, pointing it to your COLMAP output folder:
+
+   ```bash
+   python train_SegMeshGS.py --colmap_folder /path/to/your/colmap_output
+   ```
+
+2. **User Interaction Step**  
+   The script will pause and automatically open the **SAGA GUI**.  
+   In the viewer:
+   - Click on the object you want to extract.
+   - Export the selection as a `.ply` file.
+   - ⚠️ **Important**: Name the file with a meaningful English word (e.g., `chair.ply`, `sculpture.ply`).  
+     This name is used as the text prompt for the final meshing stage.
+
+3. **Completion**  
+   After you save and close the SAGA GUI, the script will automatically resume and complete the final meshing process.  
+   The output `.obj` file and textures will be saved in your project folder.
+
+---
+
+<details>
+  <summary><b>Advanced Usage: Running Pipeline Steps Manually</b></summary>
+
+#### **1. Generate Vanilla 3DGS Scene**
+
+Creates the initial photorealistic 3DGS scene.
+
+```bash
+python train_scene.py -s /path/to/your/colmap_output
+```
+
+---
+
+#### **2. Prepare for SAGA Segmentation**
+
+These scripts prepare the necessary data for SAGA's feature training.
+
+**Extract SAM Masks:**
+
+```bash
+python extract_segment_everything_masks.py --image_root /path/to/colmap_output --downsample 1.0
+```
+
+**Calculate Scene Scale:**
+
+```bash
+python get_scale.py --image_root /path/to/colmap_output --model_path /path/to/colmap_output/SAGA
+```
+
+---
+
+#### **3. Train SAGA Affinity Features**
+
+Trains the scene to understand object semantics.
+
+```bash
+python train_saga.py -m /path/to/colmap_output/SAGA --iterations 10000
+```
+
+---
+
+#### **4. Interactively Segment with SAGA GUI**
+
+Opens the viewer to manually select and export your target object.  
+Remember to name the output `.ply` file meaningfully (e.g., `target.ply`).
+
+```bash
+python saga_gui.py --model_path /path/to/colmap_output/SAGA
+```
+
+---
+
+#### **5. Prepare for SuGaR Meshing (Image Masking)**
+
+Masks the source images to isolate the target object using CLIP.
+
+```bash
+python clipsam/faseClipExtract.py --input_folder /path/to/colmap_output --query "target"
+```
+
+*(Replace `"target"` with the name you used for your exported `.ply` file.)*
+
+---
+
+#### **6. Run SuGaR for Final Meshing**
+
+Generates the final 3D mesh from the segmented Gaussians.
+
+```bash
+python train_sugar.py -s /path/to/colmap_output --segment_targetname "target" --gs_output_dir /path/to/segmented_ply_folder
+```
+
+*(Ensure `--segment_targetname` matches your exported object's name and `--gs_output_dir` points to where the segmented `.ply` is located.)*
+
+</details>
+
+---
+
+## 🎮 Unity Integration: UnitySegMeshGS
+
+For users who prefer a GUI-driven workflow, the **UnitySegMeshGS** module provides a bridge to run this entire pipeline from within the Unity Editor.
+
+### **Setup and Testing**
+
+#### **1. Start the Backend Server**
+
+In your WSL2 terminal, navigate to the server directory and run the Flask app.  
+This server will listen for commands from Unity.
+
+```bash
+# Run the server
+python server.py
+```
+
+#### **2. Configure Unity Project**
+
+- Open the **UnityProject** folder in Unity Hub (Version **2022.3.21f1** recommended).  
+- Using the **Package Manager** (`Window > Package Manager`), click **+ → Add package from disk...**  
+- Select the `package.json` file located inside the `package/unitySegMeshGS` directory.
+
+#### **3. Run Pipeline from Unity**
+
+With the server running, you can now use the **custom inspector buttons** provided by the UnitySegMeshGS module to execute the pipeline steps easily.
 
 ---
 
 ## 📚 References & Credits
 
-This project stands on the shoulders of giants. We are immensely grateful to the researchers and developers behind these incredible open-source projects:
+This project stands on the shoulders of giants.  
+We are immensely grateful to the researchers and developers behind these incredible open-source projects:
 
--   **3D Gaussian Splatting**: [3D Gaussian Splatting for Real-Time Radiance Field Rendering](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/)
--   **SAGA**: [Segment Any 3D Gaussians](https://github.com/Jumpat/SegAnyGAussians)
--   **SuGaR**: [Surface-Aligned Gaussian Splatting for Efficient 3D Mesh Reconstruction](https://github.com/Anttwo/SuGaR)
--   **Unity Viewer**: [UnityGaussianSplatting by @aras-p](https://github.com/aras-p/UnityGaussianSplatting)
+- **3D Gaussian Splatting**: [3D Gaussian Splatting for Real-Time Radiance Field Rendering](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/)
+- **SAGA**: [Segment Any 3D Gaussians](https://github.com/yzslab/segment-any-3d-gaussians)
+- **SuGaR**: [Surface-Aligned Gaussian Splatting for Efficient 3D Mesh Reconstruction](https://github.com/hugohenrycs/SuGaR)
+- **Unity Viewer**: [UnityGaussianSplatting by @aras-p](https://github.com/aras-p/UnityGaussianSplatting)
