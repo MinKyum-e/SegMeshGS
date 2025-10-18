@@ -124,7 +124,7 @@ namespace SegNeshGS.Runtime
             }
 
             string pythonScriptsDir =
-                Path.GetFullPath(Path.Combine(Application.dataPath, "Seg3dgsTool", "PythonScripts"));
+                Path.GetFullPath(Path.Combine(Application.dataPath, "PythonScripts"));
 
             if (!File.Exists(Path.Combine(pythonScriptsDir, "convert.py")))
             {

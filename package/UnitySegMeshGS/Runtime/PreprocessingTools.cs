@@ -5,8 +5,9 @@ using Debug = UnityEngine.Debug;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using SegNeshGS.Runtime;
 
-namespace SegNeshGS.Runtime
+namespace Seg3dgsTool.Runtime
 {
     public class PreprocessingTools : MonoBehaviour
     {
@@ -187,9 +188,16 @@ namespace SegNeshGS.Runtime
                 return -1;
             }
 
+            string pythonScriptsDir =
+                Path.GetFullPath(Path.Combine(Application.dataPath, "PythonScripts"));
 
+            if (!File.Exists(Path.Combine(pythonScriptsDir, "convert.py")))
+            {
+                Debug.LogError($"Python script 'convert.py' not found in '{pythonScriptsDir}'.");
+                return -1;
+            }
 
-            string command = $"python convert.py -s \"{colmapProjectDir}\"";
+            string command = $"cd /d \"{pythonScriptsDir}\" && python convert.py -s \"{colmapProjectDir}\"";
 
             return await RunCommandInShellAsync(command);
         }
