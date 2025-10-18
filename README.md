@@ -42,7 +42,7 @@ The entire workflow is integrated into the Unity editor through the **UnitySegMe
 
 ## 🛠️ Pipeline Workflow
 
-The SegMeshGS pipeline is composed of four main stages, designed to run sequentially with minimal user intervention.
+The SegMeshGS pipeline is composed of four main stages, designed to run sequentially with minimal user intervention.  
 <img width="340" height="304" alt="Image" src="https://github.com/user-attachments/assets/c16a92c8-ad6d-4f2b-a449-780a4403347d" />
 <details>
   <summary><b>Click to Expand for Detailed Workflow</b></summary>
